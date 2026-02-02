@@ -28,6 +28,7 @@ Project: **Mail Orchestrator**
 - [Data model](#data-model)
 - [API](#api)
 - [Editor and formatting](#editor-and-formatting)
+- [OAuth credentials](#oauth-credentials)
 - [Gmail integration](#gmail-integration)
 - [Local-first and security](#local-first-and-security)
 - [Development](#development)
@@ -256,6 +257,69 @@ Text and HTML remain synchronized:
 
 Tradeoff: perfect bidirectional conversion is complex.  
 This project prioritizes predictable behavior for outreach and follow-up workflows.
+
+---
+
+## OAuth credentials
+
+This project uses Google OAuth to access the Gmail API in local development.
+Real OAuth credentials **must never be committed**.
+An example file is provided to guide the setup:
+
+```
+backend/secrets/credentials-example.jsonc
+```
+
+### How to set up
+
+1. Copy the example file:
+
+```
+backend/secrets/credentials-example.jsonc → backend/secrets/credentials.json
+```
+
+2. Follow the step-by-step instructions inside the example file to:
+   - Create a Google Cloud project
+   - Enable the Gmail API
+   - Configure the OAuth consent screen
+   - Create a **Web application** OAuth client
+   - Add the redirect URI:
+     ```
+     http://localhost:8000/api/auth/callback
+     ```
+
+3. Make sure `credentials.json` and `.env` are ignored by git.
+
+---
+
+### Environment variables
+
+Create a `.env` file inside `backend/`:
+
+```
+GOOGLE_OAUTH_CLIENT_SECRETS_FILE=./secrets/credentials.json
+GOOGLE_OAUTH_TOKEN_FILE=./secrets/token.json
+GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8000/api/auth/callback
+GOOGLE_OAUTH_SCOPES=https://www.googleapis.com/auth/gmail.send
+https://www.googleapis.com/auth/gmail.readonly
+```
+
+---
+
+### Verification
+
+After setup:
+
+1. Start the backend
+2. Call `POST /api/auth/login`
+3. Open the returned `auth_url`
+4. Complete Google consent
+
+If successful:
+
+- Google redirects to the backend callback
+- A token file is created at: `backend/secrets/token.json`
+- `GET /api/auth/status` returns `authenticated: true`
 
 ---
 
