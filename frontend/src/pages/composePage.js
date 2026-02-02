@@ -1,5 +1,6 @@
 import { api } from "../lib/api";
 import { htmlToText, textToHtml } from "../lib/editorSync";
+import { applyPlaceholders } from "../lib/placeholders";
 
 function escapeHtml(s) {
   return (s || "")
@@ -62,6 +63,39 @@ export function renderComposePage(root) {
                   <input class="input" name="subject" placeholder="Quick follow up" autocomplete="off" />
                 </label>
               </div>
+
+            <div class="panel panel--inner">
+            <div class="panel-head">
+                <h3 class="panel-title">Template</h3>
+                <div class="panel-actions">
+                <button class="btn btn--ghost" type="button" data-action="templates-refresh">Refresh</button>
+                </div>
+            </div>
+
+            <div class="cols cols--2">
+                <label class="field">
+                <span class="label">Select template</span>
+                <select class="select" name="template_id" data-role="template-select">
+                    <option value="">No template</option>
+                </select>
+                <span class="hint">Selecting a template will generate placeholder inputs.</span>
+                </label>
+
+                <div class="field">
+                <span class="label">Mode</span>
+                <div class="mode-row">
+                    <span class="badge" data-role="template-mode">Manual</span>
+                    <button class="btn btn--ghost" type="button" data-action="template-clear" disabled>Clear template</button>
+                </div>
+                <span class="hint">Manual means no substitution is applied.</span>
+                </div>
+            </div>
+
+            <div class="placeholders" data-role="placeholders">
+                <div class="empty">Select a template to see placeholders.</div>
+            </div>
+            </div>
+
 
               <div class="tabs" role="tablist">
                 <button class="tab is-active" type="button" data-tab="text" role="tab">Text</button>
@@ -145,6 +179,13 @@ export function renderComposePage(root) {
     inlineCount: root.querySelector('[data-role="inline-count"]'),
     btnSend: root.querySelector('[data-action="send"]'),
     btnReset: root.querySelector('[data-action="reset"]'),
+    templateSelect: root.querySelector('[data-role="template-select"]'),
+    templateMode: root.querySelector('[data-role="template-mode"]'),
+    placeholders: root.querySelector('[data-role="placeholders"]'),
+    btnTemplatesRefresh: root.querySelector(
+      '[data-action="templates-refresh"]',
+    ),
+    btnTemplateClear: root.querySelector('[data-action="template-clear"]'),
   };
 
   let activeTab = "text";
@@ -155,6 +196,20 @@ export function renderComposePage(root) {
     attachments: [],
     inlineImages: [], // { id, filename, mime_type, size_bytes, dataUrl, content_id }
   };
+
+  const templateState = {
+    active: false,
+    templateId: null,
+    placeholders: [],
+    values: {},
+    raw: {
+      subject: "",
+      text: "",
+      html: "",
+    },
+  };
+
+  let templatesCache = [];
 
   function setStatus(text, kind = "muted") {
     els.status.textContent = text || "";
@@ -297,6 +352,130 @@ export function renderComposePage(root) {
     setStatus("Inline image added", "ok");
   }
 
+  function setTemplateMode(active) {
+    templateState.active = active;
+    els.templateMode.textContent = active ? "Template" : "Manual";
+    els.btnTemplateClear.disabled = !active;
+  }
+
+  function renderTemplateOptions() {
+    const options = templatesCache
+      .map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`)
+      .join("");
+
+    const selected = templateState.templateId
+      ? String(templateState.templateId)
+      : "";
+    els.templateSelect.innerHTML = `
+      <option value="">No template</option>
+      ${options}
+    `;
+    els.templateSelect.value = selected;
+  }
+
+  async function loadTemplates() {
+    setStatus("Loading templates…", "muted");
+    try {
+      templatesCache = await api.templates.list();
+      renderTemplateOptions();
+      setStatus("Ready", "ok");
+    } catch (err) {
+      setStatus(err.message, "error");
+    }
+  }
+
+  function renderPlaceholderFields() {
+    if (!templateState.active || !templateState.placeholders.length) {
+      els.placeholders.innerHTML = `<div class="empty">Select a template to see placeholders.</div>`;
+      return;
+    }
+
+    els.placeholders.innerHTML = `
+      <div class="placeholders-grid">
+        ${templateState.placeholders
+          .map((p) => {
+            const key = p.key;
+            const label = p.label || key;
+            const value = templateState.values[key] || "";
+            return `
+              <label class="field">
+                <span class="label">${escapeHtml(label)}</span>
+                <input class="input" data-ph="${escapeHtml(key)}" value="${escapeHtml(value)}" placeholder="{{${escapeHtml(key)}}}" />
+                <span class="hint mono">{{${escapeHtml(key)}}}</span>
+              </label>
+            `;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  function applyTemplateToFields() {
+    if (!templateState.active) return;
+
+    const subject = applyPlaceholders(
+      templateState.raw.subject,
+      templateState.values,
+    );
+    const bodyText = applyPlaceholders(
+      templateState.raw.text,
+      templateState.values,
+    );
+    const bodyHtml = applyPlaceholders(
+      templateState.raw.html,
+      templateState.values,
+    );
+
+    els.form.subject.value = subject;
+
+    syncing = true;
+    els.form.body_text.value = bodyText;
+    els.form.body_html.value = bodyHtml;
+    syncing = false;
+
+    if (activeTab === "preview") renderPreview();
+  }
+
+  async function activateTemplate(templateId) {
+    if (!templateId) {
+      clearTemplate();
+      return;
+    }
+
+    setStatus("Loading template…", "muted");
+    try {
+      const t = await api.templates.get(templateId);
+      const placeholders = await api.templates.placeholders(templateId);
+
+      templateState.templateId = t.id;
+      templateState.placeholders = placeholders || [];
+      templateState.values = {};
+
+      templateState.raw.subject = t.subject_template || "";
+      templateState.raw.text = t.body_text_template || "";
+      templateState.raw.html = t.body_html_template || "";
+
+      setTemplateMode(true);
+      renderPlaceholderFields();
+      applyTemplateToFields();
+      setStatus("Ready", "ok");
+    } catch (err) {
+      setStatus(err.message, "error");
+    }
+  }
+
+  function clearTemplate() {
+    templateState.active = false;
+    templateState.templateId = null;
+    templateState.placeholders = [];
+    templateState.values = {};
+    templateState.raw = { subject: "", text: "", html: "" };
+
+    els.templateSelect.value = "";
+    renderPlaceholderFields();
+    setTemplateMode(false);
+  }
+
   async function send() {
     const to = els.form.to.value.trim();
     const subject = els.form.subject.value.trim();
@@ -357,6 +536,7 @@ export function renderComposePage(root) {
   }
 
   function reset() {
+    clearTemplate();
     els.form.to.value = "";
     els.form.subject.value = "";
     els.form.body_text.value = "";
@@ -377,12 +557,30 @@ export function renderComposePage(root) {
 
   els.form.body_text.addEventListener("input", () => {
     lastEdited = "text";
+    if (templateState.active) {
+      templateState.raw.text = els.form.body_text.value || "";
+      templateState.raw.html = textToHtml(templateState.raw.text);
+      applyTemplateToFields();
+      return;
+    }
     syncFromText();
   });
 
   els.form.body_html.addEventListener("input", () => {
     lastEdited = "html";
+    if (templateState.active) {
+      templateState.raw.html = els.form.body_html.value || "";
+      templateState.raw.text = htmlToText(templateState.raw.html);
+      applyTemplateToFields();
+      return;
+    }
     syncFromHtml();
+  });
+
+  els.form.subject.addEventListener("input", () => {
+    if (!templateState.active) return;
+    templateState.raw.subject = els.form.subject.value || "";
+    applyTemplateToFields();
   });
 
   els.form.body_text.addEventListener("paste", handlePaste);
@@ -432,6 +630,28 @@ export function renderComposePage(root) {
     }
   });
 
+  els.btnTemplatesRefresh.addEventListener("click", () => loadTemplates());
+
+  els.templateSelect.addEventListener("change", (e) => {
+    const id = e.target.value ? Number(e.target.value) : null;
+    activateTemplate(id);
+  });
+
+  els.btnTemplateClear.addEventListener("click", () => {
+    clearTemplate();
+    setStatus("Template cleared", "muted");
+  });
+
+  els.placeholders.addEventListener("input", (e) => {
+    const input = e.target.closest("input[data-ph]");
+    if (!input) return;
+
+    const key = input.getAttribute("data-ph");
+    templateState.values[key] = input.value;
+    applyTemplateToFields();
+  });
+
+  loadTemplates();
   setStatus("Ready", "ok");
   setActiveTab("text");
   renderAttachments();

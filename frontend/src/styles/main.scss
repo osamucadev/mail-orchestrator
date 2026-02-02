@@ -831,3 +831,32 @@ body {
   height: 100%;
   object-fit: cover;
 }
+
+.select {
+  border: 1px solid rgba(17, 24, 39, 0.18);
+  background: #fff;
+  padding: 10px 12px;
+  font-size: 0.98rem;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.mode-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.placeholders {
+  margin-top: 14px;
+}
+
+.placeholders-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+
+  @media (min-width: 980px) {
+    grid-template-columns: 1fr 1fr;
+  }
+}
