@@ -627,17 +627,20 @@ export function renderComposePage(root) {
 
   els.fileInput.addEventListener("change", (e) => {
     const files = Array.from(e.target.files || []);
+
     for (const f of files) {
       state.attachments.push({
         id: uid("att"),
+        file: f,
         filename: f.name,
         mime_type: f.type || "application/octet-stream",
         size_bytes: f.size || 0,
       });
     }
-    e.target.value = "";
+
     renderAttachments();
     setStatus("Attachment added", "ok");
+    e.target.value = "";
   });
 
   root.addEventListener("click", (e) => {

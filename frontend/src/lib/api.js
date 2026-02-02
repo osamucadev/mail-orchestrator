@@ -57,6 +57,13 @@ export const api = {
     checkReply: (id) =>
       request(`/api/emails/${id}/check-reply`, { method: "POST" }),
     sendMultipart: async (formData) => {
+      for (const [key, value] of formData.entries()) {
+        if (value instanceof File) {
+          console.log(key, "FILE", value.name, value.type, value.size);
+        } else {
+          console.log(key, value);
+        }
+      }
       const res = await fetch(`${API_BASE}/api/emails/send-multipart`, {
         method: "POST",
         body: formData,
