@@ -12,14 +12,21 @@ __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
+*.pyc
 *.egg-info/
 .venv/
 venv/
 .env
-.env.*
 .pytest_cache/
 .mypy_cache/
 ruff_cache/
+
+# Local DB
+backend/*.db
+
+# OAuth secrets
+backend/secrets/credentials.json
+backend/.env
 
 # OS and editors
 .DS_Store
