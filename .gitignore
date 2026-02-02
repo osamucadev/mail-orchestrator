@@ -26,6 +26,7 @@ backend/*.db
 
 # OAuth secrets
 backend/secrets/credentials.json
+backend/secrets/token.json
 backend/.env
 
 # OS and editors

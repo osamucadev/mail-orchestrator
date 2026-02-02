@@ -1,4 +1,5 @@
 import { api } from "../lib/api";
+import { toast } from "../components/toast";
 
 function escapeHtml(s) {
   return (s || "")
@@ -33,7 +34,10 @@ export async function renderHistoryPage(root) {
           </div>
 
           <div class="history" data-role="list">
-            <div class="empty">No emails yet. Send one via Swagger or wait for Compose.</div>
+            <div class="empty empty--boxed">
+              <div class="empty-title">No sent emails yet</div>
+              <div class="empty-sub">Send one from Compose or via Swagger, then come back here.</div>
+            </div>
           </div>
 
           <div class="history-foot">
@@ -55,6 +59,19 @@ export async function renderHistoryPage(root) {
   let offset = 0;
   let total = 0;
   let items = [];
+  let loading = false;
+
+  function setLoading(value) {
+    loading = value;
+    els.btnRefresh.disabled = loading;
+    els.btnLoadMore.disabled = loading || items.length >= total;
+  }
+
+  function disableItemButtons(id, value) {
+    const card = root.querySelector(`.history-item[data-id="${id}"]`);
+    if (!card) return;
+    card.querySelectorAll("button").forEach((b) => (b.disabled = value));
+  }
 
   function setStatus(text, kind = "muted") {
     els.status.textContent = text || "";
@@ -62,8 +79,34 @@ export async function renderHistoryPage(root) {
   }
 
   function render() {
+    if (loading && !items.length) {
+      els.list.innerHTML = `
+        <div class="skeleton-list">
+          ${Array.from({ length: 6 })
+            .map(
+              () => `
+            <div class="skeleton-item">
+              <div class="skeleton-emoji"></div>
+              <div class="skeleton-lines">
+                <div class="skeleton-line"></div>
+                <div class="skeleton-line skeleton-line--short"></div>
+              </div>
+            </div>
+          `,
+            )
+            .join("")}
+        </div>`;
+      return;
+    }
+
     if (!items.length) {
-      els.list.innerHTML = `<div class="empty">No emails yet. Send one via Swagger or wait for Compose.</div>`;
+      els.list.innerHTML = `
+      <div class="history" data-role="list">
+        <div class="empty empty--boxed">
+          <div class="empty-title">No sent emails yet</div>
+          <div class="empty-sub">Send one from Compose or via Swagger, then come back here.</div>
+        </div>
+      </div>`;
       return;
     }
 
@@ -111,6 +154,8 @@ export async function renderHistoryPage(root) {
   }
 
   async function loadPage({ reset = false } = {}) {
+    setLoading(true);
+
     if (reset) {
       offset = 0;
       items = [];
@@ -135,54 +180,64 @@ export async function renderHistoryPage(root) {
       els.btnLoadMore.textContent = shown >= total ? "No more" : "Load more";
     } catch (err) {
       setStatus(err.message, "error");
+    } finally {
+      setLoading(false);
     }
   }
 
   async function handleCheckReply(id) {
-    const btns = root.querySelectorAll(`.history-item[data-id="${id}"] button`);
-    btns.forEach((b) => (b.disabled = true));
+    disableItemButtons(id, true);
     setStatus("Checking reply…", "muted");
     try {
       const result = await api.emails.checkReply(id);
       await loadPage({ reset: true });
 
-      if (result.responded) {
-        setStatus("Reply detected", "ok");
-      } else {
-        setStatus("No reply found", "muted");
-      }
+      if (result.responded) toast("Reply detected", "ok");
+      else toast("No reply found", "muted");
     } catch (err) {
+      toast("Reply check failed", "error");
       setStatus(err.message, "error");
     } finally {
-      btns.forEach((b) => (b.disabled = false));
+      disableItemButtons(id, false);
     }
   }
 
   async function handleResend(id) {
+    disableItemButtons(id, true);
     setStatus("Resending…", "muted");
     try {
       await api.emails.resend(id);
       await loadPage({ reset: true });
+      toast("Email resent", "ok");
       setStatus("Resent", "ok");
     } catch (err) {
+      toast("Failed to resend", "error");
       setStatus(err.message, "error");
+    } finally {
+      disableItemButtons(id, false);
     }
   }
 
   async function handleMark(id, responded) {
+    disableItemButtons(id, true);
     setStatus("Updating…", "muted");
     try {
       await api.emails.markResponded(id, responded);
       await loadPage({ reset: true });
+      toast(responded ? "Marked as replied" : "Marked as not replied", "ok");
       setStatus("Updated", "ok");
     } catch (err) {
+      toast("Failed to update", "error");
       setStatus(err.message, "error");
+    } finally {
+      disableItemButtons(id, false);
     }
   }
 
   root.addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
+    if (loading) return;
 
     const action = btn.getAttribute("data-action");
 

@@ -860,3 +860,103 @@ body {
     grid-template-columns: 1fr 1fr;
   }
 }
+
+.empty--boxed {
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: #fff;
+  padding: 18px;
+}
+
+.empty-title {
+  font-weight: 900;
+  letter-spacing: -0.01em;
+}
+
+.empty-sub {
+  margin-top: 8px;
+  color: rgba(11, 11, 15, 0.66);
+  line-height: 1.7;
+}
+
+.skeleton-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.skeleton-item {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: #fff;
+}
+
+.skeleton-emoji {
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: rgba(17, 24, 39, 0.06);
+}
+
+.skeleton-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.skeleton-line {
+  height: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  background: rgba(17, 24, 39, 0.06);
+}
+
+.skeleton-line--short {
+  width: 62%;
+}
+
+.toast-stack {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 9999;
+}
+
+.toast {
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: #fff;
+  box-shadow: 8px 8px 0 rgba(17, 24, 39, 0.06);
+  padding: 10px 12px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  transform: translateY(6px);
+  opacity: 0;
+  transition:
+    transform 160ms ease,
+    opacity 160ms ease;
+  max-width: 320px;
+}
+
+.toast.is-in {
+  transform: translateY(0);
+  opacity: 1;
+}
+
+.toast--ok {
+  border-color: rgba(0, 120, 0, 0.25);
+  background: rgba(0, 120, 0, 0.06);
+}
+
+.toast--error {
+  border-color: rgba(120, 0, 0, 0.25);
+  background: rgba(120, 0, 0, 0.06);
+}
+
+.toast--muted {
+  background: rgba(17, 24, 39, 0.03);
+}
