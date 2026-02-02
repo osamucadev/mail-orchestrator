@@ -11,6 +11,9 @@ from app.models.email_attachment import EmailAttachment
 from app.services.settings_service import get_or_create_settings
 from app.models.email_attachment import EmailAttachment
 
+from app.gmail.reply_detector import check_thread_for_reply
+from app.gmail.gmail_client import get_gmail_service
+
 
 def create_email(
     db: Session,
@@ -177,3 +180,46 @@ def resend_email(db: Session, email_id: int) -> Email | None:
     db.refresh(new_email)
     return new_email
 
+def check_reply(db: Session, email_id: int) -> dict:
+    email = db.get(Email, email_id)
+    if email is None:
+        return {"ok": False, "status": "not_found"}
+
+    email.last_checked_at = datetime.now(timezone.utc)
+
+    if email.responded:
+        db.commit()
+        return {"ok": True, "status": "already_responded"}
+
+    if not email.gmail_thread_id:
+        db.commit()
+        return {"ok": False, "status": "missing_thread_id"}
+
+    service = get_gmail_service()
+    if not service:
+        db.commit()
+        return {"ok": False, "status": "not_authenticated"}
+
+    result = check_thread_for_reply(
+        service=service,
+        thread_id=email.gmail_thread_id,
+        sent_at=email.sent_at,
+    )
+
+    if result.replied:
+        email.responded = True
+        email.responded_source = "gmail"
+        email.responded_at = datetime.now(timezone.utc)
+
+    db.commit()
+    db.refresh(email)
+
+    return {
+        "ok": True,
+        "status": "replied" if email.responded else "not_replied",
+        "reason": result.reason,
+        "responded": email.responded,
+        "responded_source": email.responded_source,
+        "responded_at": email.responded_at.isoformat() if email.responded_at else None,
+        "last_checked_at": email.last_checked_at.isoformat() if email.last_checked_at else None,
+    }

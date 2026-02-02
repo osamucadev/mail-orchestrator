@@ -11,7 +11,7 @@ from app.schemas.email import (
     EmailMarkRespondedRequest,
     EmailActionResponse,
 )
-from app.services.email_service import create_email, list_history, mark_responded, resend_email
+from app.services.email_service import create_email, list_history, mark_responded, resend_email, check_reply
 
 from app.gmail.gmail_client import get_gmail_service
 from app.gmail.gmail_sender import send_email_via_gmail
@@ -74,3 +74,18 @@ def resend(
     if email is None:
         raise HTTPException(status_code=404, detail="Email not found")
     return email
+
+@router.post("/{email_id}/check-reply")
+def check_reply_now(email_id: int, db: Session = Depends(get_db)):
+    result = check_reply(db, email_id=email_id)
+
+    if result.get("status") == "not_found":
+        raise HTTPException(status_code=404, detail="Email not found")
+
+    if result.get("status") == "missing_thread_id":
+        raise HTTPException(status_code=400, detail="This email has no gmail_thread_id. Send via Gmail first.")
+
+    if result.get("status") == "not_authenticated":
+        raise HTTPException(status_code=401, detail="Not authenticated. Complete OAuth login first.")
+
+    return result
