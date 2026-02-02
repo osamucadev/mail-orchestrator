@@ -13,12 +13,35 @@ from app.schemas.email import (
 )
 from app.services.email_service import create_email, list_history, mark_responded, resend_email
 
+from app.gmail.gmail_client import get_gmail_service
+from app.gmail.gmail_sender import send_email_via_gmail
+
 router = APIRouter(prefix="/api/emails", tags=["emails"])
 
 
 @router.post("/send", response_model=EmailSendResponse, status_code=status.HTTP_201_CREATED)
 def send_email(payload: EmailSendRequest, db: Session = Depends(get_db)):
-    email = create_email(db, payload.model_dump())
+    service = get_gmail_service()
+    if not service:
+        raise HTTPException(status_code=401, detail="Not authenticated. Complete OAuth login first.")
+
+    data = payload.model_dump()
+
+    ids = send_email_via_gmail(
+        service=service,
+        to=data["to"],
+        subject=data["subject"],
+        body_text=data.get("body_text"),
+        body_html=data.get("body_html"),
+        attachments=data.get("attachments") or [],
+    )
+
+    email = create_email(
+        db,
+        data,
+        gmail_message_id=ids.get("gmail_message_id") or None,
+        gmail_thread_id=ids.get("gmail_thread_id") or None,
+    )
     return email
 
 

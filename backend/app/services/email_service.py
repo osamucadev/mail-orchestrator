@@ -12,7 +12,13 @@ from app.services.settings_service import get_or_create_settings
 from app.models.email_attachment import EmailAttachment
 
 
-def create_email(db: Session, data: dict) -> Email:
+def create_email(
+    db: Session,
+    data: dict,
+    *,
+    gmail_message_id: str | None = None,
+    gmail_thread_id: str | None = None,
+) -> Email:
     attachments = data.pop("attachments", [])
 
     email = Email(
@@ -25,8 +31,8 @@ def create_email(db: Session, data: dict) -> Email:
         responded_at=None,
         responded_source=None,
         last_checked_at=None,
-        gmail_message_id=None,
-        gmail_thread_id=None,
+        gmail_message_id=gmail_message_id,
+        gmail_thread_id=gmail_thread_id,
     )
 
     db.add(email)
