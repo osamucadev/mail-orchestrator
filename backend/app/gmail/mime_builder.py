@@ -5,7 +5,13 @@ from pathlib import Path
 from typing import Any
 
 from email.message import EmailMessage
-from email.utils import formatdate, make_msgid
+from email.utils import formatdate
+
+
+def _split_mime(mime_type: str) -> tuple[str, str]:
+    if "/" not in mime_type:
+        return "application", "octet-stream"
+    return tuple(mime_type.split("/", 1))  # type: ignore[return-value]
 
 
 def build_email_message(
@@ -24,19 +30,18 @@ def build_email_message(
     text = body_text or ""
     html = body_html or ""
 
-    # Always set a plain text part
     msg.set_content(text)
 
-    # Add HTML alternative if provided
     if html.strip():
         msg.add_alternative(html, subtype="html")
 
-    # Attach files only when a real storage_path exists
+    inline_items: list[dict[str, Any]] = []
+    normal_items: list[dict[str, Any]] = []
+
     for a in attachments or []:
         disposition = (a.get("disposition") or "").strip().lower()
         storage_path = (a.get("storage_path") or "").strip()
 
-        # Frontend currently sends "pending" because upload is not implemented yet
         if not storage_path or storage_path == "pending":
             continue
 
@@ -44,32 +49,52 @@ def build_email_message(
         if not path.exists() or not path.is_file():
             continue
 
+        item = dict(a)
+        item["storage_path"] = str(path)
+
+        if disposition == "inline":
+            inline_items.append(item)
+        else:
+            normal_items.append(item)
+
+    # Inline images must be RELATED to the HTML part to render with cid: references
+    if inline_items and html.strip():
+        html_part = msg.get_body(preferencelist=("html",))
+        if html_part is not None:
+            for a in inline_items:
+                path = Path(a["storage_path"])
+                filename = a.get("filename") or path.name
+                mime_type = a.get("mime_type") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
+                maintype, subtype = _split_mime(mime_type)
+                content_id = (a.get("content_id") or "").strip()
+
+                data = path.read_bytes()
+
+                # EmailMessage will set Content-ID when cid is provided
+                html_part.add_related(
+                    data,
+                    maintype=maintype,
+                    subtype=subtype,
+                    cid=f"<{content_id}>",
+                    filename=filename,
+                    disposition="inline",
+                )
+
+    # Normal attachments go to the root message
+    for a in normal_items:
+        path = Path(a["storage_path"])
         filename = a.get("filename") or path.name
         mime_type = a.get("mime_type") or mimetypes.guess_type(filename)[0] or "application/octet-stream"
-        maintype, subtype = mime_type.split("/", 1) if "/" in mime_type else ("application", "octet-stream")
+        maintype, subtype = _split_mime(mime_type)
 
         data = path.read_bytes()
 
-        if disposition == "inline":
-            # Inline attachments require Content-ID and related structure
-            # This is simplified: EmailMessage will handle parts, but true inline rendering
-            # will be improved when we implement actual inline upload and cid mapping.
-            cid = a.get("content_id") or make_msgid(domain="mail-orchestrator.local").strip("<>")
-            msg.add_attachment(
-                data,
-                maintype=maintype,
-                subtype=subtype,
-                filename=filename,
-                disposition="inline",
-                cid=f"<{cid}>",
-            )
-        else:
-            msg.add_attachment(
-                data,
-                maintype=maintype,
-                subtype=subtype,
-                filename=filename,
-                disposition="attachment",
-            )
+        msg.add_attachment(
+            data,
+            maintype=maintype,
+            subtype=subtype,
+            filename=filename,
+            disposition="attachment",
+        )
 
     return msg

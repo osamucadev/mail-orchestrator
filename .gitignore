@@ -39,6 +39,7 @@ Thumbs.db
 *.sqlite
 *.sqlite3
 *.db
+backend/storage/uploads/*
 
 # OAuth tokens and credentials
 tokens/

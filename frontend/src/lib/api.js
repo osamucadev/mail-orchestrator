@@ -56,6 +56,14 @@ export const api = {
     resend: (id) => request(`/api/emails/${id}/resend`, { method: "POST" }),
     checkReply: (id) =>
       request(`/api/emails/${id}/check-reply`, { method: "POST" }),
+    sendMultipart: async (formData) => {
+      const res = await fetch(`${API_BASE}/api/emails/send-multipart`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
   },
   settings: {
     get: () => request("/api/settings"),

@@ -24,6 +24,21 @@ function formatBytes(bytes) {
   return `${mb.toFixed(1)} MB`;
 }
 
+function dataUrlToBlob(dataUrl) {
+  const [meta, base64] = dataUrl.split(",");
+  const mime =
+    meta.match(/data:(.*);base64/)?.[1] || "application/octet-stream";
+
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+
+  return new Blob([bytes], { type: mime });
+}
+
 export function renderComposePage(root) {
   root.innerHTML = `
     <section class="page-shell">
@@ -227,7 +242,12 @@ export function renderComposePage(root) {
   }
 
   function renderPreview() {
-    const html = els.form.body_html.value || "";
+    let html = els.form.body_html.value || "";
+
+    for (const img of state.inlineImages) {
+      html = html.replaceAll(`cid:${img.content_id}`, img.dataUrl);
+    }
+
     els.preview.innerHTML =
       html || `<div class="empty">Nothing to preview yet.</div>`;
   }
@@ -518,13 +538,32 @@ export function renderComposePage(root) {
         });
       }
 
-      await api.emails.send({
-        to,
-        subject,
-        body_text,
-        body_html,
-        attachments: attachmentsPayload,
-      });
+      const form = new FormData();
+      form.append("to", to);
+      form.append("subject", subject);
+      form.append("body_text", body_text || "");
+      form.append("body_html", body_html || "");
+
+      // Inline meta for content-id mapping
+      const inlineMeta = state.inlineImages.map((img) => ({
+        filename: img.filename,
+        content_id: img.content_id,
+        mime_type: img.mime_type,
+      }));
+
+      form.append("inline_meta", JSON.stringify(inlineMeta));
+
+      for (const img of state.inlineImages) {
+        const blob = dataUrlToBlob(img.dataUrl);
+        form.append("inline_images", blob, img.filename);
+      }
+
+      // Normal attachments if you already store File in state.attachments
+      for (const a of state.attachments) {
+        if (a.file) form.append("attachments", a.file, a.filename);
+      }
+
+      await api.emails.sendMultipart(form);
 
       setStatus("Saved to local history", "ok");
       window.location.hash = "#history";
