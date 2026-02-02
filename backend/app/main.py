@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi import Response
 
 app = FastAPI(
     title="Mail Orchestrator API",
@@ -16,6 +17,11 @@ app.add_middleware(
 )
 
 
+
 @app.get("/api/health")
 def health() -> dict:
     return {"status": "ok"}
+
+@app.head("/api/health")
+def health_head() -> Response:
+    return Response(status_code=200)
