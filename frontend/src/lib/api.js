@@ -54,6 +54,8 @@ export const api = {
         body: JSON.stringify({ responded }),
       }),
     resend: (id) => request(`/api/emails/${id}/resend`, { method: "POST" }),
+    checkReply: (id) =>
+      request(`/api/emails/${id}/check-reply`, { method: "POST" }),
   },
   settings: {
     get: () => request("/api/settings"),

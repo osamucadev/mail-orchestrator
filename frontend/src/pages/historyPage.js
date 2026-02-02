@@ -95,6 +95,8 @@ export async function renderHistoryPage(root) {
             </div>
 
             <div class="history-actions">
+              <div class="history-actions">
+              <button class="btn btn--ghost" data-action="check-reply">Check reply</button>
               <button class="btn btn--ghost" data-action="resend">Resend</button>
               ${
                 e.responded
@@ -133,6 +135,26 @@ export async function renderHistoryPage(root) {
       els.btnLoadMore.textContent = shown >= total ? "No more" : "Load more";
     } catch (err) {
       setStatus(err.message, "error");
+    }
+  }
+
+  async function handleCheckReply(id) {
+    const btns = root.querySelectorAll(`.history-item[data-id="${id}"] button`);
+    btns.forEach((b) => (b.disabled = true));
+    setStatus("Checking reply…", "muted");
+    try {
+      const result = await api.emails.checkReply(id);
+      await loadPage({ reset: true });
+
+      if (result.responded) {
+        setStatus("Reply detected", "ok");
+      } else {
+        setStatus("No reply found", "muted");
+      }
+    } catch (err) {
+      setStatus(err.message, "error");
+    } finally {
+      btns.forEach((b) => (b.disabled = false));
     }
   }
 
@@ -178,6 +200,11 @@ export async function renderHistoryPage(root) {
     if (!card) return;
     const id = card.getAttribute("data-id");
     if (!id) return;
+
+    if (action === "check-reply") {
+      handleCheckReply(id);
+      return;
+    }
 
     if (action === "resend") {
       handleResend(id);
