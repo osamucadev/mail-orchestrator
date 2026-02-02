@@ -1,0 +1,250 @@
+:root {
+  font-synthesis: none;
+  text-rendering: geometricPrecision;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+$ink: #0b0b0f;
+$muted: #4b5563;
+$muted-2: #6b7280;
+
+$paper: #f4f4f6;
+$wash: #efeff3;
+
+$line: rgba(17, 24, 39, 0.14);
+$line-strong: rgba(17, 24, 39, 0.22);
+
+$accent: #2b0f4a;
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: $ink;
+  background: $paper;
+  font-family: "IBM Plex Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+}
+
+.container {
+  width: min(1120px, calc(100% - 40px));
+  margin: 0 auto;
+}
+
+.topbar {
+  border-bottom: 1px solid $line;
+  background: $paper;
+}
+
+.topbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 0;
+  gap: 18px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid $line-strong;
+  background: #fff;
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: $accent;
+}
+
+.brand-name {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.nav-link {
+  text-decoration: none;
+  color: rgba(11, 11, 15, 0.78);
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 1px solid transparent;
+  padding: 8px 10px;
+}
+
+.nav-link:hover {
+  color: rgba(11, 11, 15, 0.92);
+  border-color: rgba(43, 15, 74, 0.22);
+  background: rgba(43, 15, 74, 0.06);
+}
+
+.nav-link.is-active {
+  color: rgba(11, 11, 15, 0.92);
+  border-color: rgba(43, 15, 74, 0.28);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.page {
+  padding: 40px 0 88px;
+}
+
+#stack {
+  padding: 48px 0 0;
+}
+
+.section-title {
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 2rem;
+  font-weight: 650;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  text-align: center;
+  color: $ink;
+  margin: 0 0 40px;
+}
+
+.stack-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 34px;
+}
+
+.stack-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding: 28px;
+
+  background: $wash;
+  border: 1px solid $line-strong;
+  border-radius: 0;
+
+  box-shadow:
+    8px 8px 0 rgba(17, 24, 39, 0.06),
+    0 0 0 1px rgba(255, 255, 255, 0.4) inset;
+
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+
+  @media (min-width: 768px) {
+    flex-direction: row;
+    gap: 34px;
+    padding: 34px;
+  }
+}
+
+.stack-card:hover {
+  transform: translate(-2px, -2px);
+  border-color: rgba(43, 15, 74, 0.28);
+  box-shadow:
+    12px 12px 0 rgba(43, 15, 74, 0.1),
+    0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+}
+
+.stack-card--core {
+  background: linear-gradient(180deg, #f7f7fa 0%, $wash 100%);
+  border-color: rgba(43, 15, 74, 0.26);
+
+  box-shadow:
+    10px 10px 0 rgba(43, 15, 74, 0.12),
+    0 0 0 1px rgba(255, 255, 255, 0.55) inset;
+}
+
+.stack-icon {
+  flex-shrink: 0;
+  width: 74px;
+  height: 74px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 44px;
+  font-weight: 750;
+
+  color: $accent;
+  background: #ffffff;
+  border: 1px solid $line-strong;
+  border-radius: 0;
+
+  box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.06) inset;
+
+  align-self: flex-start;
+
+  @media (min-width: 768px) {
+    width: 92px;
+    height: 92px;
+    font-size: 52px;
+  }
+}
+
+.stack-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.stack-content h3 {
+  margin: 0;
+  font-family: "Space Grotesk", system-ui, sans-serif;
+  font-size: 1.18rem;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  color: $ink;
+
+  @media (min-width: 768px) {
+    font-size: 1.42rem;
+  }
+}
+
+.stack-content p {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: $muted;
+}
+
+.stack-tech {
+  margin-top: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(17, 24, 39, 0.12);
+
+  font-size: 0.92rem;
+  line-height: 1.65;
+  color: $muted-2;
+}
+
+.stack-closing {
+  text-align: center;
+  padding: 18px 0 0;
+}
+
+.stack-closing p {
+  margin: 0 auto;
+  max-width: 660px;
+  font-size: 1.02rem;
+  line-height: 1.75;
+  color: $muted-2;
+}
