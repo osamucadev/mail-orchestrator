@@ -10,6 +10,8 @@
 [![Gmail API](https://img.shields.io/badge/Gmail%20API-enabled-EA4335?logo=gmail&logoColor=white)](#gmail-integration)
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
 
+![Mail Orchestrator User Interface](./screenshot.png)
+
 Local-first email composer and sent mail tracker powered by Gmail.  
 Designed as a portfolio-grade project: clean architecture, strong UI identity, and a backend prepared for future deployment.
 
