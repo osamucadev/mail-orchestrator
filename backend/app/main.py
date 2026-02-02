@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.settings import router as settings_router
 from app.api.templates import router as templates_router
+from app.api.emails import router as emails_router
 
 app = FastAPI(
     title="Mail Orchestrator API",
@@ -11,6 +12,7 @@ app = FastAPI(
 
 app.include_router(settings_router)
 app.include_router(templates_router)
+app.include_router(emails_router)
 
 app.add_middleware(
     CORSMiddleware,
