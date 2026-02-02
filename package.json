@@ -1,0 +1,10 @@
+{
+  "name": "mail-orchestrator",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Local-first email composer and sent mail tracker powered by Gmail.",
+  "scripts": {
+    "dev": "",
+    "lint": ""
+  }
+}
