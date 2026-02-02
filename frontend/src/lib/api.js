@@ -55,4 +55,12 @@ export const api = {
       }),
     resend: (id) => request(`/api/emails/${id}/resend`, { method: "POST" }),
   },
+  settings: {
+    get: () => request("/api/settings"),
+    update: (payload) =>
+      request("/api/settings", {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      }),
+  },
 };

@@ -635,3 +635,71 @@ body {
   display: flex;
   justify-content: center;
 }
+
+.grid--settings {
+  @media (min-width: 980px) {
+    grid-template-columns: 1fr 360px;
+  }
+}
+
+.cols--4 {
+  @media (min-width: 980px) {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.input--mono {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.hint {
+  color: rgba(11, 11, 15, 0.62);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.preview-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+
+  @media (min-width: 980px) {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.preview-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: #fff;
+}
+
+.preview-emoji {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(17, 24, 39, 0.16);
+  background: rgba(43, 15, 74, 0.06);
+  font-size: 18px;
+}
+
+.preview-title {
+  font-weight: 850;
+  letter-spacing: -0.01em;
+}
+
+.preview-sub {
+  margin-top: 4px;
+  color: rgba(11, 11, 15, 0.66);
+}
+
+.note {
+  margin: 12px 0 0;
+  color: rgba(11, 11, 15, 0.66);
+  line-height: 1.7;
+}
