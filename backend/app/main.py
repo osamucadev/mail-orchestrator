@@ -4,6 +4,7 @@ from app.api.settings import router as settings_router
 from app.api.templates import router as templates_router
 from app.api.emails import router as emails_router
 from app.api.auth import router as auth_router
+from app.api.gmail import router as gmail_router
 
 app = FastAPI(
     title="Mail Orchestrator API",
@@ -15,6 +16,7 @@ app.include_router(settings_router)
 app.include_router(templates_router)
 app.include_router(emails_router)
 app.include_router(auth_router)
+app.include_router(gmail_router)
 
 app.add_middleware(
     CORSMiddleware,
