@@ -1,6 +1,7 @@
 import { renderTemplatesPage } from "./templatesPage";
 import { renderHistoryPage } from "./historyPage";
 import { renderSettingsPage } from "./settingsPage";
+import { renderComposePage } from "./composePage";
 
 function normalizeHash(hash) {
   const h = (hash || "").replace("#", "").trim();
@@ -26,6 +27,11 @@ export function renderRoute(root) {
 
   if (route === "settings") {
     renderSettingsPage(root);
+    return;
+  }
+
+  if (route === "compose") {
+    renderComposePage(root);
     return;
   }
 
