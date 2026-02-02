@@ -53,3 +53,13 @@ class EmailHistoryResponse(BaseModel):
     limit: int
     offset: int
     total: int
+
+class EmailMarkRespondedRequest(BaseModel):
+    responded: bool = True
+
+
+class EmailActionResponse(BaseModel):
+    id: int
+
+    class Config:
+        from_attributes = True
