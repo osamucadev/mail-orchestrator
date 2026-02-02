@@ -1,4 +1,5 @@
 import { renderTemplatesPage } from "./templatesPage";
+import { renderHistoryPage } from "./historyPage";
 
 function normalizeHash(hash) {
   const h = (hash || "").replace("#", "").trim();
@@ -14,6 +15,11 @@ export function renderRoute(root) {
 
   if (route === "templates") {
     renderTemplatesPage(root);
+    return;
+  }
+
+  if (route === "history") {
+    renderHistoryPage(root);
     return;
   }
 

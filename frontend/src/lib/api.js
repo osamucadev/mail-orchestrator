@@ -40,4 +40,19 @@ export const api = {
     remove: (id) => request(`/api/templates/${id}`, { method: "DELETE" }),
     placeholders: (id) => request(`/api/templates/${id}/placeholders`),
   },
+  emails: {
+    history: (limit = 50, offset = 0) =>
+      request(`/api/emails/history?limit=${limit}&offset=${offset}`),
+    send: (payload) =>
+      request("/api/emails/send", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+    markResponded: (id, responded = true) =>
+      request(`/api/emails/${id}/mark-responded`, {
+        method: "POST",
+        body: JSON.stringify({ responded }),
+      }),
+    resend: (id) => request(`/api/emails/${id}/resend`, { method: "POST" }),
+  },
 };
