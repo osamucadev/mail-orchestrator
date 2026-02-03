@@ -511,6 +511,23 @@ export function renderComposePage(root) {
       return;
     }
 
+    // Check for attachment mention without actual attachments
+    const bodyToCheck = body_text || body_html || "";
+    const hasAttachmentMention =
+      /attach|anexo|arquivo|file|anexa|envio|enclosed/i.test(bodyToCheck);
+    const hasAttachments =
+      state.attachments.length > 0 || state.inlineImages.length > 0;
+
+    if (hasAttachmentMention && !hasAttachments) {
+      const proceed = confirm(
+        "Your message mentions an attachment but none is attached.\n\nSend anyway?",
+      );
+      if (!proceed) {
+        setStatus("Send cancelled", "muted");
+        return;
+      }
+    }
+
     els.btnSend.disabled = true;
     setStatus("Sending…", "muted");
 

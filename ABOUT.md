@@ -92,6 +92,7 @@ Main fields:
 - `body_text` (text)
 - `body_html` (text)
 - `sent_at` (datetime)
+- `send_count` (int)
 - `responded` (bool)
 - `responded_at` (datetime, nullable)
 - `responded_source` (enum: `gmail`, `manual`)
