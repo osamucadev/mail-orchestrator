@@ -71,6 +71,7 @@ export const api = {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
+    delete: (id) => request(`/api/emails/${id}`, { method: "DELETE" }),
   },
   settings: {
     get: () => request("/api/settings"),

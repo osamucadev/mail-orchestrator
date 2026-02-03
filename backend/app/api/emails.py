@@ -25,6 +25,7 @@ from app.services.email_service import (
     list_history,
     mark_responded,
     resend_email,
+    delete_email
 )
 
 STORAGE_DIR = Path("./storage")
@@ -211,3 +212,13 @@ def check_reply_now(email_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Not authenticated. Complete OAuth login first.")
 
     return result
+
+@router.delete("/{email_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_email_route(
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    success = delete_email(db, email_id=email_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Email not found")
+    return None

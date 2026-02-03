@@ -226,3 +226,16 @@ def check_reply(db: Session, email_id: int) -> dict:
         "responded_at": email.responded_at.isoformat() if email.responded_at else None,
         "last_checked_at": email.last_checked_at.isoformat() if email.last_checked_at else None,
     }
+
+def delete_email(db: Session, email_id: int) -> bool:
+    """
+    Delete an email and its attachments from the database.
+    """
+    email = db.get(Email, email_id)
+    if email is None:
+        return False
+    
+    # Delete attachments automatically (cascade delete)
+    db.delete(email)
+    db.commit()
+    return True

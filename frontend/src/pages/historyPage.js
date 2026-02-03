@@ -147,6 +147,7 @@ export async function renderHistoryPage(root) {
                   ? `<button class="btn btn--ghost" data-action="mark-unreplied">Mark not replied</button>`
                   : `<button class="btn" data-action="mark-replied">Mark replied</button>`
               }
+              <button class="btn btn--ghost" data-action="delete">Delete</button>
             </div>
           </article>
         `;
@@ -235,6 +236,24 @@ export async function renderHistoryPage(root) {
     }
   }
 
+  async function handleDelete(id) {
+    if (!confirm("Delete this email?")) return;
+
+    disableItemButtons(id, true);
+    setStatus("Deleting…", "muted");
+    try {
+      await api.emails.delete(id);
+      await loadPage({ reset: true });
+      toast("Email deleted", "ok");
+      setStatus("Deleted", "ok");
+    } catch (err) {
+      toast("Failed to delete", "error");
+      setStatus(err.message, "error");
+    } finally {
+      disableItemButtons(id, false);
+    }
+  }
+
   root.addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
@@ -274,6 +293,11 @@ export async function renderHistoryPage(root) {
 
     if (action === "mark-unreplied") {
       handleMark(id, false);
+    }
+
+    if (action === "delete") {
+      handleDelete(parseInt(id));
+      return;
     }
   });
 
