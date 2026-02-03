@@ -2,6 +2,7 @@ import { renderTemplatesPage } from "./templatesPage";
 import { renderHistoryPage } from "./historyPage";
 import { renderSettingsPage } from "./settingsPage";
 import { renderComposePage } from "./composePage";
+import { renderAuthCallback } from "./authCallback";
 
 function normalizeHash(hash) {
   const h = (hash || "").replace("#", "").trim();
@@ -14,6 +15,11 @@ export function getRoute() {
 
 export function renderRoute(root) {
   const route = getRoute();
+
+  if (route === "auth-callback") {
+    renderAuthCallback();
+    return;
+  }
 
   if (route === "templates") {
     renderTemplatesPage(root);

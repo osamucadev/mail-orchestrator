@@ -42,7 +42,7 @@ def auth_callback(
         raise HTTPException(status_code=400, detail=f"OAuth exchange failed: {e}")
 
     # For now, redirect to frontend. Vite runs on 5173.
-    return RedirectResponse(url="http://localhost:5173/#settings")
+    return RedirectResponse(url="http://localhost:5173/#auth-callback")
 
 
 @router.post("/logout")

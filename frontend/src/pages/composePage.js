@@ -1,6 +1,5 @@
 import { api } from "../lib/api";
-import { htmlToText, textToHtml } from "../lib/editorSync";
-import { applyPlaceholders } from "../lib/placeholders";
+import { toast } from "../components/toast";
 
 function escapeHtml(s) {
   return (s || "")
@@ -47,7 +46,7 @@ export function renderComposePage(root) {
           <div>
             <h2 class="page-title">Compose</h2>
             <p class="page-subtitle">
-              Write in text or HTML. Paste images from clipboard. Attach files outside the editor.
+              Write in HTML. Paste images from clipboard. Attach files outside the editor.
             </p>
           </div>
 
@@ -111,20 +110,14 @@ export function renderComposePage(root) {
             </div>
             </div>
 
-
               <div class="tabs" role="tablist">
-                <button class="tab is-active" type="button" data-tab="text" role="tab">Text</button>
-                <button class="tab" type="button" data-tab="html" role="tab">HTML</button>
+                <button class="tab is-active" type="button" data-tab="html" role="tab">Editor</button>
                 <button class="tab" type="button" data-tab="preview" role="tab">Preview</button>
               </div>
 
               <div class="editor">
-                <div class="editor-pane is-active" data-pane="text">
-                  <textarea class="textarea" name="body_text" rows="14" placeholder="Write plain text here."></textarea>
-                </div>
-
-                <div class="editor-pane" data-pane="html">
-                  <textarea class="textarea textarea--mono" name="body_html" rows="14" placeholder="Write HTML here."></textarea>
+                <div class="editor-pane is-active" data-pane="html">
+                  <textarea class="textarea" name="body_html" rows="14" placeholder="Write your message here. Press Enter for line break, Ctrl+Enter for visual line break."></textarea>
                 </div>
 
                 <div class="editor-pane" data-pane="preview">
@@ -173,7 +166,7 @@ export function renderComposePage(root) {
               <ul class="bullets">
                 <li>Attachments are outside the message editor.</li>
                 <li>Inline images are attached with disposition <code>inline</code>.</li>
-                <li>Send saves locally now, Gmail integration comes later.</li>
+                <li>Press <code>Enter</code> for &lt;br /&gt;, <code>Ctrl+Enter</code> for visual line break.</li>
               </ul>
             </div>
           </aside>
@@ -203,13 +196,11 @@ export function renderComposePage(root) {
     btnTemplateClear: root.querySelector('[data-action="template-clear"]'),
   };
 
-  let activeTab = "text";
-  let lastEdited = "text"; // "text" or "html"
-  let syncing = false;
+  let activeTab = "html";
 
   const state = {
     attachments: [],
-    inlineImages: [], // { id, filename, mime_type, size_bytes, dataUrl, content_id }
+    inlineImages: [],
   };
 
   const templateState = {
@@ -219,7 +210,6 @@ export function renderComposePage(root) {
     values: {},
     raw: {
       subject: "",
-      text: "",
       html: "",
     },
   };
@@ -300,35 +290,11 @@ export function renderComposePage(root) {
       .join("");
   }
 
-  function syncFromText() {
-    if (syncing) return;
-    syncing = true;
-    const text = els.form.body_text.value || "";
-    els.form.body_html.value = textToHtml(text);
-    syncing = false;
-    if (activeTab === "preview") renderPreview();
-  }
-
-  function syncFromHtml() {
-    if (syncing) return;
-    syncing = true;
-    const html = els.form.body_html.value || "";
-    els.form.body_text.value = htmlToText(html);
-    syncing = false;
-    if (activeTab === "preview") renderPreview();
-  }
-
   function insertInlineReference(img) {
     const html = els.form.body_html.value || "";
     const snippet = `<p><img src="cid:${img.content_id}" alt="${escapeHtml(img.filename)}"/></p>`;
     els.form.body_html.value = html ? `${html}\n${snippet}` : snippet;
-
-    const text = els.form.body_text.value || "";
-    const marker = `[image: ${img.filename}]`;
-    els.form.body_text.value = text ? `${text}\n${marker}` : marker;
-
-    lastEdited = "html";
-    if (activeTab === "preview") renderPreview();
+    renderPreview();
   }
 
   async function handlePaste(e) {
@@ -430,28 +396,24 @@ export function renderComposePage(root) {
     `;
   }
 
-  function applyTemplateToFields() {
+  function applyPlaceholdersToTemplate() {
     if (!templateState.active) return;
 
-    const subject = applyPlaceholders(
-      templateState.raw.subject,
-      templateState.values,
-    );
-    const bodyText = applyPlaceholders(
-      templateState.raw.text,
-      templateState.values,
-    );
-    const bodyHtml = applyPlaceholders(
-      templateState.raw.html,
-      templateState.values,
-    );
+    const subject = templateState.raw.subject;
+    const html = templateState.raw.html;
 
-    els.form.subject.value = subject;
+    // Simple placeholder substitution: {{key}} -> value
+    let appliedSubject = subject;
+    let appliedHtml = html;
 
-    syncing = true;
-    els.form.body_text.value = bodyText;
-    els.form.body_html.value = bodyHtml;
-    syncing = false;
+    for (const [key, value] of Object.entries(templateState.values)) {
+      const placeholder = `{{${key}}}`;
+      appliedSubject = appliedSubject.replaceAll(placeholder, value);
+      appliedHtml = appliedHtml.replaceAll(placeholder, value);
+    }
+
+    els.form.subject.value = appliedSubject;
+    els.form.body_html.value = appliedHtml;
 
     if (activeTab === "preview") renderPreview();
   }
@@ -472,12 +434,11 @@ export function renderComposePage(root) {
       templateState.values = {};
 
       templateState.raw.subject = t.subject_template || "";
-      templateState.raw.text = t.body_text_template || "";
       templateState.raw.html = t.body_html_template || "";
 
       setTemplateMode(true);
       renderPlaceholderFields();
-      applyTemplateToFields();
+      applyPlaceholdersToTemplate();
       setStatus("Ready", "ok");
     } catch (err) {
       setStatus(err.message, "error");
@@ -489,7 +450,7 @@ export function renderComposePage(root) {
     templateState.templateId = null;
     templateState.placeholders = [];
     templateState.values = {};
-    templateState.raw = { subject: "", text: "", html: "" };
+    templateState.raw = { subject: "", html: "" };
 
     els.templateSelect.value = "";
     renderPlaceholderFields();
@@ -499,7 +460,6 @@ export function renderComposePage(root) {
   async function send() {
     const to = els.form.to.value.trim();
     const subject = els.form.subject.value.trim();
-    const body_text = els.form.body_text.value || null;
     const body_html = els.form.body_html.value || null;
 
     if (!to) {
@@ -512,7 +472,7 @@ export function renderComposePage(root) {
     }
 
     // Check for attachment mention without actual attachments
-    const bodyToCheck = body_text || body_html || "";
+    const bodyToCheck = body_html || "";
     const hasAttachmentMention =
       /attach|anexo|arquivo|file|anexa|envio|enclosed/i.test(bodyToCheck);
     const hasAttachments =
@@ -532,36 +492,12 @@ export function renderComposePage(root) {
     setStatus("Sending…", "muted");
 
     try {
-      const attachmentsPayload = [];
-
-      for (const a of state.attachments) {
-        attachmentsPayload.push({
-          filename: a.filename,
-          mime_type: a.mime_type,
-          size_bytes: a.size_bytes,
-          disposition: "attachment",
-          storage_path: "pending",
-        });
-      }
-
-      for (const img of state.inlineImages) {
-        attachmentsPayload.push({
-          filename: img.filename,
-          mime_type: img.mime_type,
-          size_bytes: img.size_bytes,
-          disposition: "inline",
-          content_id: img.content_id,
-          storage_path: "pending",
-        });
-      }
-
       const form = new FormData();
       form.append("to", to);
       form.append("subject", subject);
-      form.append("body_text", body_text || "");
+      form.append("body_text", "");
       form.append("body_html", body_html || "");
 
-      // Inline meta for content-id mapping
       const inlineMeta = state.inlineImages.map((img) => ({
         filename: img.filename,
         content_id: img.content_id,
@@ -575,7 +511,6 @@ export function renderComposePage(root) {
         form.append("inline_images", blob, img.filename);
       }
 
-      // Normal attachments if you already store File in state.attachments
       for (const a of state.attachments) {
         if (a.file) form.append("attachments", a.file, a.filename);
       }
@@ -595,7 +530,6 @@ export function renderComposePage(root) {
     clearTemplate();
     els.form.to.value = "";
     els.form.subject.value = "";
-    els.form.body_text.value = "";
     els.form.body_html.value = "";
     state.attachments = [];
     state.inlineImages = [];
@@ -603,43 +537,41 @@ export function renderComposePage(root) {
     renderInlineImages();
     renderPreview();
     setStatus("Reset", "muted");
-    setActiveTab("text");
-    lastEdited = "text";
+    setActiveTab("html");
   }
+
+  // Handle Enter key in textarea
+  els.form.body_html.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      if (e.ctrlKey) {
+        // Ctrl+Enter: insert newline only (visual break, no <br />)
+        e.preventDefault();
+        const textarea = e.target;
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const before = textarea.value.substring(0, start);
+        const after = textarea.value.substring(end);
+        textarea.value = before + "\n" + after;
+        textarea.selectionStart = textarea.selectionEnd = start + 1;
+      } else {
+        // Enter: insert <br />
+        e.preventDefault();
+        const textarea = e.target;
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const before = textarea.value.substring(0, start);
+        const after = textarea.value.substring(end);
+        textarea.value = before + "<br />" + after;
+        textarea.selectionStart = textarea.selectionEnd = start + 6;
+      }
+      if (activeTab === "preview") renderPreview();
+    }
+  });
 
   els.tabs.forEach((t) => {
     t.addEventListener("click", () => setActiveTab(t.getAttribute("data-tab")));
   });
 
-  els.form.body_text.addEventListener("input", () => {
-    lastEdited = "text";
-    if (templateState.active) {
-      templateState.raw.text = els.form.body_text.value || "";
-      templateState.raw.html = textToHtml(templateState.raw.text);
-      applyTemplateToFields();
-      return;
-    }
-    syncFromText();
-  });
-
-  els.form.body_html.addEventListener("input", () => {
-    lastEdited = "html";
-    if (templateState.active) {
-      templateState.raw.html = els.form.body_html.value || "";
-      templateState.raw.text = htmlToText(templateState.raw.html);
-      applyTemplateToFields();
-      return;
-    }
-    syncFromHtml();
-  });
-
-  els.form.subject.addEventListener("input", () => {
-    if (!templateState.active) return;
-    templateState.raw.subject = els.form.subject.value || "";
-    applyTemplateToFields();
-  });
-
-  els.form.body_text.addEventListener("paste", handlePaste);
   els.form.body_html.addEventListener("paste", handlePaste);
 
   els.fileInput.addEventListener("change", (e) => {
@@ -707,12 +639,12 @@ export function renderComposePage(root) {
 
     const key = input.getAttribute("data-ph");
     templateState.values[key] = input.value;
-    applyTemplateToFields();
+    applyPlaceholdersToTemplate();
   });
 
   loadTemplates();
   setStatus("Ready", "ok");
-  setActiveTab("text");
+  setActiveTab("html");
   renderAttachments();
   renderInlineImages();
   renderPreview();

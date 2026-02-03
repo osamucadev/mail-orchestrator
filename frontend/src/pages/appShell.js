@@ -1,3 +1,5 @@
+import { renderLoginModal } from "../components/loginModal";
+import { checkAuthStatus } from "../lib/oauth";
 import { getRoute, renderRoute } from "./router";
 
 function setActiveNav(root) {
@@ -10,7 +12,20 @@ function setActiveNav(root) {
   }
 }
 
-export function renderAppShell(root) {
+export async function renderAppShell(root) {
+  let isAuthenticated = false;
+
+  try {
+    isAuthenticated = await checkAuthStatus();
+  } catch (err) {
+    console.error("Auth check failed:", err);
+  }
+
+  if (!isAuthenticated) {
+    renderLoginModal(root);
+    return;
+  }
+
   root.innerHTML = `
     <header class="topbar">
       <div class="container topbar-inner">
