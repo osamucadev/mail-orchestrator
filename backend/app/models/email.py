@@ -23,6 +23,7 @@ class Email(Base):
     body_html: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    send_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
 
     responded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     responded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

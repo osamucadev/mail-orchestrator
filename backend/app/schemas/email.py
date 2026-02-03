@@ -29,6 +29,7 @@ class EmailSendRequest(BaseModel):
 class EmailSendResponse(BaseModel):
     id: int
     sent_at: datetime
+    send_count: int
 
     class Config:
         from_attributes = True
@@ -39,6 +40,7 @@ class EmailHistoryItem(BaseModel):
     to: str
     subject: str
     sent_at: datetime
+    send_count: int
     responded: bool
 
     relative_time: str
@@ -60,6 +62,8 @@ class EmailMarkRespondedRequest(BaseModel):
 
 class EmailActionResponse(BaseModel):
     id: int
+    sent_at: datetime
+    send_count: int
 
     class Config:
         from_attributes = True

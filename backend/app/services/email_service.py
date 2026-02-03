@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from fastapi import HTTPException
+
 from datetime import datetime, timezone
 
 from sqlalchemy import func, select
@@ -13,6 +15,7 @@ from app.models.email_attachment import EmailAttachment
 
 from app.gmail.reply_detector import check_thread_for_reply
 from app.gmail.gmail_client import get_gmail_service
+from app.gmail.gmail_sender import send_email_via_gmail
 
 
 def create_email(
@@ -99,6 +102,7 @@ def list_history(db: Session, limit: int, offset: int) -> dict:
                 "to": e.to,
                 "subject": e.subject,
                 "sent_at": e.sent_at,
+                "send_count": e.send_count,
                 "responded": e.responded,
                 "relative_time": relative_time,
                 "status_emoji": status_emoji,
@@ -133,52 +137,51 @@ def mark_responded(db: Session, email_id: int, responded: bool = True) -> Email 
 
 def resend_email(db: Session, email_id: int) -> Email | None:
     """
-    Local-only resend for now.
-
-    Creates a new Email row with the same content and attachment metadata,
-    but a new sent_at timestamp.
-
-    Later this will be replaced by a real Gmail send operation.
+    Resend an existing email.
+    Sends a copy via Gmail and updates the original row.
     """
-    original = db.get(Email, email_id)
-    if original is None:
+    # Get the original email
+    email = db.get(Email, email_id)
+    if email is None:
         return None
-
-    new_email = Email(
-        to=original.to,
-        subject=original.subject,
-        body_text=original.body_text,
-        body_html=original.body_html,
-        sent_at=datetime.now(timezone.utc),
-        responded=False,
-        responded_at=None,
-        responded_source=None,
-        last_checked_at=None,
-        gmail_message_id=None,
-        gmail_thread_id=None,
+    
+    service = get_gmail_service()
+    if not service:
+        raise HTTPException(status_code=401, detail="Not authenticated. Complete OAuth login first.")
+    
+    # Send via Gmail (same content, new message)
+    ids = send_email_via_gmail(
+        service=service,
+        to=email.to,
+        subject=email.subject,
+        body_text=email.body_text,
+        body_html=email.body_html,
+        attachments=[
+            {
+                "filename": a.filename,
+                "mime_type": a.mime_type,
+                "size_bytes": a.size_bytes,
+                "storage_path": a.storage_path,
+                "disposition": a.disposition,
+                "content_id": a.content_id,
+            }
+            for a in email.attachments
+        ],
     )
-
-    db.add(new_email)
+    
+    # Update the SAME row
+    email.sent_at = datetime.now(timezone.utc)
+    email.send_count = (email.send_count or 1) + 1
+    email.gmail_message_id = ids.get("gmail_message_id")
+    email.gmail_thread_id = ids.get("gmail_thread_id")
+    email.responded = False
+    email.responded_at = None
+    email.last_checked_at = None
+    
     db.commit()
-    db.refresh(new_email)
-
-    # Copy attachment metadata
-    for a in original.attachments:
-        db.add(
-            EmailAttachment(
-                email_id=new_email.id,
-                filename=a.filename,
-                mime_type=a.mime_type,
-                size_bytes=a.size_bytes,
-                storage_path=a.storage_path,
-                disposition=a.disposition,
-                content_id=a.content_id,
-            )
-        )
-
-    db.commit()
-    db.refresh(new_email)
-    return new_email
+    db.refresh(email)
+    
+    return email
 
 def check_reply(db: Session, email_id: int) -> dict:
     email = db.get(Email, email_id)

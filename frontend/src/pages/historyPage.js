@@ -127,6 +127,7 @@ export async function renderHistoryPage(root) {
                   <div class="history-meta">
                     <span class="mono">${escapeHtml(e.relative_time)}</span>
                     <span class="dot">•</span>
+                    <span class="mono">Sent: ${e.send_count}</span>
                     <span class="mono">to: ${escapeHtml(e.to)}</span>
                   </div>
                 </div>

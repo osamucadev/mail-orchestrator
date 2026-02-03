@@ -27,8 +27,9 @@ from app.services.email_service import (
     resend_email,
 )
 
-router = APIRouter(prefix="/api/emails", tags=["emails"])
+STORAGE_DIR = Path("./storage")
 
+router = APIRouter(prefix="/api/emails", tags=["emails"])
 
 @router.post("/send", response_model=EmailSendResponse, status_code=status.HTTP_201_CREATED)
 def send_email(payload: EmailSendRequest, db: Session = Depends(get_db)):
@@ -55,8 +56,15 @@ def send_email(payload: EmailSendRequest, db: Session = Depends(get_db)):
     )
     return email
 
-STORAGE_DIR = Path("./storage")
-
+@router.post("/{email_id}/resend", response_model=EmailActionResponse, status_code=status.HTTP_201_CREATED)
+def resend(
+    email_id: int,
+    db: Session = Depends(get_db),
+):
+    email = resend_email(db, email_id=email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    return email
 
 @router.post("/send-multipart", response_model=EmailSendResponse, status_code=status.HTTP_201_CREATED)
 def send_email_multipart(

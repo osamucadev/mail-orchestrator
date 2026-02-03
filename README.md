@@ -41,6 +41,12 @@ Project: **Mail Orchestrator**
 
 ---
 
+## Known Limitations
+
+See [TECHNICAL_DEBT.md](./TECHNICAL_DEBT.md) for known issues and limitations.
+
+---
+
 ## Why
 
 Sending a lot of outreach emails is easy. Tracking what was sent, what got replies, and what should be followed up is where most workflows break.
