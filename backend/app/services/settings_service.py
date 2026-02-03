@@ -14,10 +14,10 @@ def get_or_create_settings(db: Session) -> Settings:
     if settings is None:
         settings = Settings(
             id=DEFAULT_SETTINGS_ID,
-            t_white_minutes=60,
-            t_blue_minutes=360,
-            t_yellow_minutes=1440,
-            t_red_minutes=4320,
+            t_white_minutes=1140,
+            t_blue_minutes=4320,
+            t_yellow_minutes=7200,
+            t_red_minutes=10080,
         )
         db.add(settings)
         db.commit()

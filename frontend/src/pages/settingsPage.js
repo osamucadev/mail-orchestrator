@@ -153,12 +153,11 @@ export async function renderSettingsPage(root) {
 
   function renderPreview(t) {
     const samples = [
-      { label: "just sent", minutes: 0 },
-      { label: "15 minutes ago", minutes: 15 },
-      { label: "1 hour ago", minutes: 60 },
-      { label: "6 hours ago", minutes: 360 },
-      { label: "1 day ago", minutes: 1440 },
-      { label: "3 days ago", minutes: 4320 },
+      { label: "30 minutes ago", minutes: 30 },
+      { label: "2 days ago", minutes: 2880 },
+      { label: "4 days ago", minutes: 5760 },
+      { label: "8 days ago", minutes: 11520 },
+      { label: "9 days ago", minutes: 12960 },
     ];
 
     els.preview.innerHTML = samples
