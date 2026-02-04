@@ -123,12 +123,12 @@ export async function renderHistoryPage(root) {
 
               <div class="history-content">
                 <div class="history-top">
-                  <div class="history-subject">Software Engineer (remote) - Apply</div>
+                  <div class="history-subject">${e.subject}</div>
                   <div class="history-meta">
                     <span class="mono">${escapeHtml(e.relative_time)}</span>
                     <span class="dot">•</span>
                     <span class="mono">Sent: ${e.send_count}</span>
-                    <span class="mono">to: example@email.com</span>
+                    <span class="mono">to: ${e.to}</span>
                   </div>
                 </div>
 
