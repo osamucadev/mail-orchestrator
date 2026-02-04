@@ -6,26 +6,28 @@ from datetime import datetime, timezone
 def format_relative_time(sent_at: datetime, now: datetime | None = None) -> str:
     if now is None:
         now = datetime.now(timezone.utc)
-
     if sent_at.tzinfo is None:
         sent_at = sent_at.replace(tzinfo=timezone.utc)
-
     delta = now - sent_at
     seconds = int(delta.total_seconds())
     if seconds < 0:
         seconds = 0
-
     minutes = seconds // 60
     hours = minutes // 60
     days = hours // 24
-
     if minutes < 1:
         return "just now"
     if minutes < 60:
         return f"{minutes} minute{'s' if minutes != 1 else ''} ago"
     if hours < 24:
         return f"{hours} hour{'s' if hours != 1 else ''} ago"
-    return f"{days} day{'s' if days != 1 else ''} ago"
+
+    remaining_hours = hours % 24
+    
+    if remaining_hours == 0:
+        return f"{days} day{'s' if days != 1 else ''} ago"
+    else:
+        return f"{days} day{'s' if days != 1 else ''} and {remaining_hours} hour{'s' if remaining_hours != 1 else ''} ago"
 
 
 def pick_status_emoji(elapsed_minutes: int, thresholds: dict) -> str:

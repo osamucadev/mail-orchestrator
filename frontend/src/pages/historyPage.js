@@ -147,7 +147,7 @@ export async function renderHistoryPage(root) {
                   ? `<button class="btn btn--ghost" data-action="mark-unreplied">Mark not replied</button>`
                   : `<button class="btn" data-action="mark-replied">Mark replied</button>`
               }
-              <button class="btn btn--ghost" data-action="delete">Delete</button>
+              <button class="btn btn--ghost btn--danger" data-action="delete">Delete</button>
             </div>
           </article>
         `;
