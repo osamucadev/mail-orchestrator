@@ -61,6 +61,10 @@ export async function renderHistoryPage(root) {
   let items = [];
   let loading = false;
 
+  // Tracks currently executing async operations to prevent concurrent execution.
+  // Key is the operation identifier (action_id or refresh_load-more), value is boolean.
+  const executingOperations = new Map();
+
   function setLoading(value) {
     loading = value;
     els.btnRefresh.disabled = loading;
@@ -156,6 +160,15 @@ export async function renderHistoryPage(root) {
   }
 
   async function loadPage({ reset = false } = {}) {
+    // Use a consistent operation key to prevent concurrent load operations.
+    // This ensures only one load operation can execute at a time.
+    const operationKey = "load_page";
+
+    if (executingOperations.get(operationKey)) {
+      return;
+    }
+
+    executingOperations.set(operationKey, true);
     setLoading(true);
 
     if (reset) {
@@ -184,12 +197,22 @@ export async function renderHistoryPage(root) {
       setStatus(err.message, "error");
     } finally {
       setLoading(false);
+      executingOperations.delete(operationKey);
     }
   }
 
   async function handleCheckReply(id) {
+    // Create unique operation key for this specific item action to prevent concurrent operations on the same item
+    const operationKey = `check_reply_${id}`;
+
+    if (executingOperations.get(operationKey)) {
+      return;
+    }
+
+    executingOperations.set(operationKey, true);
     disableItemButtons(id, true);
     setStatus("Checking reply…", "muted");
+
     try {
       const result = await api.emails.checkReply(id);
       await loadPage({ reset: true });
@@ -201,12 +224,22 @@ export async function renderHistoryPage(root) {
       setStatus(err.message, "error");
     } finally {
       disableItemButtons(id, false);
+      executingOperations.delete(operationKey);
     }
   }
 
   async function handleResend(id) {
+    // Create unique operation key for this specific item action to prevent concurrent operations on the same item
+    const operationKey = `resend_${id}`;
+
+    if (executingOperations.get(operationKey)) {
+      return;
+    }
+
+    executingOperations.set(operationKey, true);
     disableItemButtons(id, true);
     setStatus("Resending…", "muted");
+
     try {
       await api.emails.resend(id);
       await loadPage({ reset: true });
@@ -217,12 +250,22 @@ export async function renderHistoryPage(root) {
       setStatus(err.message, "error");
     } finally {
       disableItemButtons(id, false);
+      executingOperations.delete(operationKey);
     }
   }
 
   async function handleMark(id, responded) {
+    // Create unique operation key for this specific item action to prevent concurrent operations on the same item
+    const operationKey = `mark_${id}_${responded}`;
+
+    if (executingOperations.get(operationKey)) {
+      return;
+    }
+
+    executingOperations.set(operationKey, true);
     disableItemButtons(id, true);
     setStatus("Updating…", "muted");
+
     try {
       await api.emails.markResponded(id, responded);
       await loadPage({ reset: true });
@@ -233,14 +276,24 @@ export async function renderHistoryPage(root) {
       setStatus(err.message, "error");
     } finally {
       disableItemButtons(id, false);
+      executingOperations.delete(operationKey);
     }
   }
 
   async function handleDelete(id) {
     if (!confirm("Delete this email?")) return;
 
+    // Create unique operation key for this specific item action to prevent concurrent operations on the same item
+    const operationKey = `delete_${id}`;
+
+    if (executingOperations.get(operationKey)) {
+      return;
+    }
+
+    executingOperations.set(operationKey, true);
     disableItemButtons(id, true);
     setStatus("Deleting…", "muted");
+
     try {
       await api.emails.delete(id);
       await loadPage({ reset: true });
@@ -251,6 +304,7 @@ export async function renderHistoryPage(root) {
       setStatus(err.message, "error");
     } finally {
       disableItemButtons(id, false);
+      executingOperations.delete(operationKey);
     }
   }
 
@@ -293,6 +347,7 @@ export async function renderHistoryPage(root) {
 
     if (action === "mark-unreplied") {
       handleMark(id, false);
+      return;
     }
 
     if (action === "delete") {

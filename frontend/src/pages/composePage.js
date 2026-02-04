@@ -1,5 +1,4 @@
 import { api } from "../lib/api";
-import { toast } from "../components/toast";
 
 function escapeHtml(s) {
   return (s || "")
@@ -215,6 +214,9 @@ export function renderComposePage(root) {
   };
 
   let templatesCache = [];
+
+  // Flag to prevent concurrent send operations and double-submit issues
+  let isSending = false;
 
   function setStatus(text, kind = "muted") {
     els.status.textContent = text || "";
@@ -458,10 +460,17 @@ export function renderComposePage(root) {
   }
 
   async function send() {
+    // Prevent duplicate submissions from rapid clicking or double-click scenarios.
+    // This is critical to avoid sending the same email multiple times.
+    if (isSending) {
+      return;
+    }
+
     const to = els.form.to.value.trim();
     const subject = els.form.subject.value.trim();
     const body_html = els.form.body_html.value || null;
 
+    // Validate required fields before attempting to send
     if (!to) {
       setStatus("To is required.", "error");
       return;
@@ -471,7 +480,8 @@ export function renderComposePage(root) {
       return;
     }
 
-    // Check for attachment mention without actual attachments
+    // Check for attachment mention without actual attachments to warn user.
+    // This prevents the common mistake of saying "see attached" but forgetting to attach.
     const bodyToCheck = body_html || "";
     const hasAttachmentMention =
       /attach|anexo|arquivo|file|anexa|envio|enclosed/i.test(bodyToCheck);
@@ -488,6 +498,8 @@ export function renderComposePage(root) {
       }
     }
 
+    // Mark as sending to prevent concurrent submissions and disable UI interactions
+    isSending = true;
     els.btnSend.disabled = true;
     setStatus("Sending…", "muted");
 
@@ -498,6 +510,8 @@ export function renderComposePage(root) {
       form.append("body_text", "");
       form.append("body_html", body_html || "");
 
+      // Build inline image metadata for server-side processing.
+      // This data helps the server attach images with correct Content-ID references.
       const inlineMeta = state.inlineImages.map((img) => ({
         filename: img.filename,
         content_id: img.content_id,
@@ -506,22 +520,28 @@ export function renderComposePage(root) {
 
       form.append("inline_meta", JSON.stringify(inlineMeta));
 
+      // Append inline image blobs to form for multipart encoding
       for (const img of state.inlineImages) {
         const blob = dataUrlToBlob(img.dataUrl);
         form.append("inline_images", blob, img.filename);
       }
 
+      // Append attachment files to form for multipart encoding
       for (const a of state.attachments) {
         if (a.file) form.append("attachments", a.file, a.filename);
       }
 
+      // Send the email with all attachments and inline images via multipart form
       await api.emails.sendMultipart(form);
 
       setStatus("Saved to local history", "ok");
-      window.location.hash = "#history";
+      // window.location.hash = "#history";
     } catch (err) {
       setStatus(err.message, "error");
     } finally {
+      // Always reset sending state and button state regardless of outcome.
+      // This ensures the UI is responsive even if errors occur.
+      isSending = false;
       els.btnSend.disabled = false;
     }
   }
@@ -540,7 +560,7 @@ export function renderComposePage(root) {
     setActiveTab("html");
   }
 
-  // Handle Enter key in textarea
+  // Handle Enter key in textarea for HTML line breaks
   els.form.body_html.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       if (e.ctrlKey) {
@@ -554,7 +574,7 @@ export function renderComposePage(root) {
         textarea.value = before + "\n" + after;
         textarea.selectionStart = textarea.selectionEnd = start + 1;
       } else {
-        // Enter: insert <br />
+        // Enter: insert <br /> tag
         e.preventDefault();
         const textarea = e.target;
         const start = textarea.selectionStart;
