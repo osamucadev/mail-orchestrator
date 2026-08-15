@@ -29,6 +29,10 @@ export async function renderHistoryPage(root) {
           <div class="panel-head">
             <h3 class="panel-title">Sent</h3>
             <div class="panel-actions">
+              <select class="select" data-role="sort-select">
+                <option value="recent">Most recent first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
               <span class="status status--muted" data-role="status"></span>
             </div>
           </div>
@@ -53,6 +57,7 @@ export async function renderHistoryPage(root) {
     list: root.querySelector('[data-role="list"]'),
     btnRefresh: root.querySelector('[data-action="refresh"]'),
     btnLoadMore: root.querySelector('[data-action="load-more"]'),
+    sortSelect: root.querySelector('[data-role="sort-select"]'),
   };
 
   let limit = 50;
@@ -60,6 +65,7 @@ export async function renderHistoryPage(root) {
   let total = 0;
   let items = [];
   let loading = false;
+  let sort = "recent";
 
   // Tracks currently executing async operations to prevent concurrent execution.
   // Key is the operation identifier (action_id or refresh_load-more), value is boolean.
@@ -179,7 +185,7 @@ export async function renderHistoryPage(root) {
 
     setStatus("Loading…", "muted");
     try {
-      const data = await api.emails.history(limit, offset);
+      const data = await api.emails.history(limit, offset, sort);
       total = data.total || 0;
 
       if (reset) items = data.items || [];
@@ -307,6 +313,12 @@ export async function renderHistoryPage(root) {
       executingOperations.delete(operationKey);
     }
   }
+
+  els.sortSelect.addEventListener("change", () => {
+    if (loading) return;
+    sort = els.sortSelect.value;
+    loadPage({ reset: true });
+  });
 
   root.addEventListener("click", (e) => {
     const btn = e.target.closest("button");

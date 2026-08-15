@@ -63,10 +63,11 @@ def create_email(
     return email
 
 
-def list_history(db: Session, limit: int, offset: int) -> dict:
+def list_history(db: Session, limit: int, offset: int, sort: str = "recent") -> dict:
     total = db.scalar(select(func.count()).select_from(Email)) or 0
 
-    stmt = select(Email).order_by(Email.to.desc()).limit(limit).offset(offset)
+    order_column = Email.sent_at.asc() if sort == "oldest" else Email.sent_at.desc()
+    stmt = select(Email).order_by(order_column).limit(limit).offset(offset)
     emails = list(db.scalars(stmt).all())
 
     settings = get_or_create_settings(db)

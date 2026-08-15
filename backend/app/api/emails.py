@@ -172,9 +172,10 @@ def send_email_multipart(
 def read_history(
     limit: int = Query(default=50, ge=1, le=200),
     offset: int = Query(default=0, ge=0),
+    sort: str = Query(default="recent", pattern="^(recent|oldest)$"),
     db: Session = Depends(get_db),
 ):
-    return list_history(db, limit=limit, offset=offset)
+    return list_history(db, limit=limit, offset=offset, sort=sort)
 
 @router.post("/{email_id}/mark-responded", response_model=EmailActionResponse)
 def manual_mark_responded(

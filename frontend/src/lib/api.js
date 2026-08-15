@@ -41,8 +41,8 @@ export const api = {
     placeholders: (id) => request(`/api/templates/${id}/placeholders`),
   },
   emails: {
-    history: (limit = 50, offset = 0) =>
-      request(`/api/emails/history?limit=${limit}&offset=${offset}`),
+    history: (limit = 50, offset = 0, sort = "recent") =>
+      request(`/api/emails/history?limit=${limit}&offset=${offset}&sort=${sort}`),
     send: (payload) =>
       request("/api/emails/send", {
         method: "POST",
