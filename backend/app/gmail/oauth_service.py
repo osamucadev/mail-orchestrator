@@ -8,6 +8,10 @@ from app.gmail.token_store import load_credentials, save_credentials
 
 settings = get_settings()
 
+# Guarda o code_verifier gerado no login, indexado pelo state,
+# até o callback chegar e poder reaplicar ele no flow.
+_pending_verifiers: dict[str, str] = {}
+
 
 def get_flow(state: str | None = None) -> Flow:
     flow = Flow.from_client_secrets_file(
@@ -26,11 +30,19 @@ def get_login_url() -> tuple[str, str]:
         include_granted_scopes="true",
         prompt="consent",
     )
+    # o Flow gera o code_verifier (PKCE) sozinho aqui dentro.
+    # guardamos ele para poder reaplicar no flow do callback.
+    _pending_verifiers[state] = flow.code_verifier
     return auth_url, state
 
 
 def exchange_code_for_token(code: str, state: str | None = None) -> Credentials:
     flow = get_flow(state=state)
+
+    code_verifier = _pending_verifiers.pop(state, None) if state else None
+    if code_verifier:
+        flow.code_verifier = code_verifier
+
     flow.fetch_token(code=code)
     creds: Credentials = flow.credentials
     save_credentials(settings.google_oauth_token_file, creds)

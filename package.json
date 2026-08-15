@@ -5,6 +5,7 @@
   "description": "Local-first email composer and sent mail tracker powered by Gmail.",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "dev:unix": "./.venv/bin/uvicorn app.main:app --reload --port 8000",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:backend": "npm --prefix backend run dev"
   },

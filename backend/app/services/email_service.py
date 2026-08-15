@@ -66,7 +66,7 @@ def create_email(
 def list_history(db: Session, limit: int, offset: int) -> dict:
     total = db.scalar(select(func.count()).select_from(Email)) or 0
 
-    stmt = select(Email).order_by(Email.id.desc()).limit(limit).offset(offset)
+    stmt = select(Email).order_by(Email.to.desc()).limit(limit).offset(offset)
     emails = list(db.scalars(stmt).all())
 
     settings = get_or_create_settings(db)
