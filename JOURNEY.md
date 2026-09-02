@@ -253,12 +253,28 @@ At this point, Mail Orchestrator can:
 * Detect replies via Gmail threads.
 * Represent time visually with meaningful signals.
 * Run fully local with migrations and clear structure.
+* Connect multiple Gmail accounts with separate histories, templates and settings.
+* Run in persistent Docker containers without keeping data inside images.
+* Verify account isolation and legacy migrations with automated tests.
+
+### From one account to account-owned data
+
+Multi-account support required more than adding a selector. The original global
+token was replaced by account-specific encrypted credentials, browser-session
+membership and explicit ownership checks in the backend.
+
+Existing data was assigned to the owner's confirmed Gmail, with a backup and
+migration rehearsal before the real database was changed. The migration preserved
+records, relationships and uploaded files. Reconnecting the original Gmail restores
+access; disconnecting an account keeps its saved workspace.
+
+This reinforced another design rule: preserving data and enforcing ownership
+belong in the implementation and tests, not only in the interface.
 
 Future work is intentionally left visible:
 
 * Follow up chains.
 * Scheduled sends.
-* Multi account support.
 * Optional online deployment.
 
 Not because it is unfinished.  

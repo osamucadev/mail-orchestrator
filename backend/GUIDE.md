@@ -1,791 +1,225 @@
-# Mail Orchestrator Backend - Developer Guide
+# Backend developer guide
 
-## Overview
+The backend is a FastAPI REST API with SQLite/SQLAlchemy persistence, Alembic
+migrations and Gmail integration. The most important invariant is account
+ownership: an authenticated browser may act only on an account authorized in
+that session, and only on that account's records.
 
-Mail Orchestrator backend is a **REST API** built with FastAPI that manages email composition, sending via Gmail API, and tracking email history with reply detection. The system uses SQLite for local storage and SQLAlchemy ORM for database management.
+Start with [setup](../SETUP.md), [the API contract](../README.md#api) and
+[account operations](ACCOUNTS.md).
 
-**Key Technologies:**
-- FastAPI (Web framework)
-- SQLAlchemy (ORM)
-- Alembic (Database migrations)
-- Gmail API (Email sending & thread tracking)
-- Pydantic (Data validation)
+## Code map
 
----
-
-## Project Structure
-```
+```text
 backend/
-├── app/
-│   ├── main.py                 # FastAPI application entry point
-│   ├── api/
-│   │   └── emails.py           # Email routes (send, resend, history, etc)
-│   │   └── auth.py             # OAuth authentication routes
-│   │   └── templates.py        # Template CRUD routes
-│   │   └── settings.py         # Settings routes
-│   ├── models/
-│   │   ├── email.py            # SQLAlchemy Email model
-│   │   ├── email_attachment.py # Attachment model
-│   │   ├── template.py         # Template model
-│   │   └── settings.py         # Settings model
-│   ├── schemas/
-│   │   ├── email.py            # Pydantic request/response schemas
-│   │   ├── template.py         # Template schemas
-│   │   └── settings.py         # Settings schemas
-│   ├── services/
-│   │   └── email_service.py    # Business logic (create, send, resend, check replies)
-│   │   └── template_service.py # Template logic
-│   │   └── settings_service.py # Settings logic
-│   ├── gmail/
-│   │   ├── gmail_client.py     # Gmail API authentication
-│   │   ├── gmail_sender.py     # Email sending (MIME building)
-│   │   └── reply_detector.py   # Reply detection logic
-│   ├── db/
-│   │   ├── database.py         # Database connection & session
-│   │   ├── base.py             # SQLAlchemy base classes
-│   │   └── deps.py             # Dependency injection (get_db)
-│   ├── core/
-│   │   ├── config.py           # Environment configuration
-│   │   └── time_utils.py       # Time formatting utilities
-│   └── migrations/             # Database schema versions
-├── tests/                       # Unit & integration tests
-├── alembic.ini                 # Migration configuration
-├── pyproject.toml              # Python dependencies
-└── requirements.txt            # Pip requirements
+  app/
+    main.py                       FastAPI, routers, CORS, no-store, health
+    api/                          auth, gmail, emails, templates, settings
+    core/config.py                Database and OAuth environment settings
+    core/time_utils.py            Relative time and emoji thresholds
+    db/base.py                    Declarative Base
+    db/session.py                 Engine and SessionLocal
+    db/deps.py                    get_db request lifecycle
+    models/account.py             Account, BrowserSession, SessionAccount, OAuthAttempt
+    models/                       Email, attachment, template, placeholder, settings
+    schemas/                      Pydantic request/response contracts
+    services/account_service.py   Browser session, Origin, ownership, encryption key
+    services/email_service.py     Scoped history, creation, resend, reply checks, deletion
+    services/template_service.py  Scoped CRUD and placeholder detection
+    services/settings_service.py  Per-account settings/defaults
+    gmail/oauth_service.py        Browser-bound OAuth and account connection
+    gmail/credentials_provider.py Decrypt/refresh selected account credentials
+    gmail/gmail_client.py         Build selected account's Gmail client
+    gmail/gmail_sender.py         Encode MIME and call messages.send
+    gmail/mime_builder.py         Build EmailMessage with attachments/inline parts
+    gmail/reply_detector.py       Fetch thread and detect newer incoming messages
+    gmail/token_store.py          Legacy file helpers, unused by active auth flow
+  alembic/versions/               Versioned schema migrations
+  scripts/                       Backup, legacy rehearsal and verification helpers
+  tests/                         Isolation/migration tests and optional browser fixture
+  pyproject.toml                 Runtime dependencies and optional test dependencies
 ```
 
----
+## Request authorization
 
-## File-by-File Explanation
+`get_db()` opens/closes a SQLAlchemy session; it does not authenticate anyone.
+Use `Depends(get_account_db)` on protected data routes.
 
-### Core Application Files
+`get_account_db` performs these checks:
 
-#### **`app/main.py`** - Application Entry Point
-**Purpose:** Initialize FastAPI app, configure middleware, include routers.
+1. For mutations, require Origin to match `FRONTEND_ORIGIN`.
+2. Hash the `mo_session` cookie and find an unexpired browser session.
+3. Require a valid integer `X-Account-ID`.
+4. Check `session_accounts` membership and connected account credentials.
+5. Set `db.info["account_id"]` for that request.
 
-**Key Concepts to Study:**
-- FastAPI initialization
-- CORS (Cross-Origin Resource Sharing)
-- Route inclusion (routers)
-- Middleware configuration
+Services retrieve the selected ID through `account_id(db)`, which fails closed
+if no authorized account is bound. Do not use a module-level active-account
+variable or trust a client-supplied email address.
 
-**What Happens:**
-1. Creates FastAPI instance
-2. Sets up CORS for frontend (localhost:5173)
-3. Includes all API routers
-4. Defines health check endpoint
+Protected lookups must include both record ID and owner:
+
 ```python
-# Example structure
-app = FastAPI()
-app.add_middleware(CORSMiddleware, ...)
-app.include_router(emails.router)
-app.include_router(auth.router)
+email = db.scalar(
+    select(Email).where(
+        Email.id == email_id,
+        Email.account_id == account_id(db),
+    )
+)
 ```
 
----
+An unscoped `db.get(Email, email_id)` would allow cross-account access.
+Counts, pagination, updates and deletes must use the same ownership filter.
+Dependent rows are accessed only after authorization of their parent.
 
-### API Layer (`app/api/`)
+Authentication metadata routes use `get_db` deliberately: status lists only the
+current session's accounts; login establishes a session; the callback validates
+the pending browser-bound authorization before linking an account.
 
-These files handle HTTP requests and responses. They act as the "controller" layer.
+## OAuth and credential lifecycle
 
-#### **`app/api/emails.py`** - Email Endpoints
-**Purpose:** HTTP routes for email operations.
+1. The frontend starts `POST /api/auth/login` with credentials included.
+2. The backend validates Origin and creates/reuses an HttpOnly browser session.
+3. `get_login_url(db, session)` asks for offline consent and account selection.
+   The state hash, encrypted PKCE verifier and expiry are stored in SQLite.
+4. Google returns to the callback. The backend verifies the browser, expiry and
+   state, consumes the attempt once, and exchanges the code with PKCE.
+5. Gmail's authenticated profile supplies the normalized email address.
+6. The account is created or reused; credentials are encrypted and session
+   membership is added. An existing refresh token is preserved if needed.
+7. The frontend receives the account ID in its callback fragment. Popup results
+   are checked against source/origin and server status; same-tab login reloads
+   the normal application.
+8. Subsequent Gmail calls use `get_gmail_service(db)`, which delegates to
+   `get_valid_credentials(db)` to decrypt and refresh only the selected account.
 
-**Endpoints:**
-- `POST /api/emails/send` - Send new email
-- `POST /api/emails/send-multipart` - Send with file uploads
-- `GET /api/emails/history` - Fetch email history
-- `POST /api/emails/{id}/resend` - Resend existing email
-- `POST /api/emails/{id}/check-reply` - Check for replies
-- `POST /api/emails/{id}/mark-responded` - Mark as replied
-- `DELETE /api/emails/{id}` - Delete email
+Browser sessions expire after 30 days; pending attempts after 10 minutes. Status
+means a local connection exists, not that a fresh Google API call has succeeded.
+A revoked/expired Google authorization may require reconnection.
 
-**Key Concepts to Study:**
-- HTTP status codes (201 Created, 404 Not Found, etc)
-- FastAPI dependency injection (`Depends(get_db)`)
-- Path/query parameters
-- Request/response validation with Pydantic
-- Exception handling (HTTPException)
+`POST /api/auth/logout` clears the selected account's credentials and all of its
+session associations. It retains email/template/settings data and does not
+revoke the grant remotely at Google.
 
-**Why This Structure:**
-Separates HTTP logic from business logic. Makes testing easier and keeps concerns isolated.
+The encryption key is separate from the database. See [configuration and key
+backup](ACCOUNTS.md#security-and-persistence). The old `token.json` is not read by
+the current credential provider.
 
----
+## Persistence model
 
-#### **`app/api/auth.py`** - Authentication Routes
-**Purpose:** OAuth 2.0 login flow.
+`Account` has a unique email and nullable encrypted credential payload.
+`BrowserSession` stores only a hashed session identifier plus expiry.
+`SessionAccount` is the membership relation.
+`OAuthAttempt` binds a one-time attempt to the browser session.
 
-**Endpoints:**
-- `POST /api/auth/login` - Initiate OAuth, return Google auth URL
-- `GET /api/auth/callback` - Google redirects here with auth code
-- `GET /api/auth/status` - Check if user is authenticated
-- `POST /api/auth/logout` - Clear session
+`Email` includes owner, recipient, subject, body variants, Gmail IDs, timestamps,
+send count and response state. Attachments store local paths and MIME metadata
+under their email. `Template` owns its detected placeholder rows. `Settings`
+has a unique `account_id`, not a fixed global ID.
 
-**Key Concepts to Study:**
-- OAuth 2.0 authorization code flow
-- Google API client library
-- Token management
-- Redirect responses
+Lazy-created settings currently default to 1140, 4320, 7200 and 10080 minutes.
+Migrated settings retain their original values.
 
-**Flow:**
-1. Frontend calls POST `/auth/login`
-2. Backend generates Google auth URL
-3. Frontend opens popup with that URL
-4. User authorizes on Google
-5. Google redirects to `/auth/callback?code=...`
-6. Backend exchanges code for token
-7. Backend saves token locally
-8. Frontend detects popup closed, reloads
+## Sending and uploads
 
----
+`POST /api/emails/send` accepts JSON for messages without attachments.
+Although the schema retains attachment metadata fields, this route rejects a
+nonempty attachment list. Use `/send-multipart` for actual files.
 
-### Models Layer (`app/models/`)
+Multipart fields include `to`, `subject`, `body_text`, `body_html`,
+`inline_meta`, `inline_images` and `attachments`.
+Uploads are saved under `storage/uploads/<account_id>/` with unique filenames;
+legacy paths remain valid. Inline metadata supplies Content-ID mappings.
 
-SQLAlchemy ORM models that represent database tables.
+The route obtains the authorized Gmail client and calls
+`send_email_via_gmail`. `mime_builder.py` returns a Python `EmailMessage` with
+text/HTML alternatives, related inline images and regular attachments.
+The sender encodes the message as URL-safe base64 and calls Gmail.
 
-#### **`app/models/email.py`** - Email Model
-**Purpose:** Define email table structure and relationships.
+Only after a successful Gmail response does `create_email` persist local history
+and attachment records. Gmail delivery and database commits are not an atomic
+transaction; see [known limitations](../TECHNICAL_DEBT.md).
 
-**Key Concepts to Study:**
-- SQLAlchemy declarative models
-- Column types (String, DateTime, Integer, Boolean, Text)
-- Primary keys and foreign keys
-- Relationships (one-to-many, cascade delete)
-- Default values and constraints
+`EmailSendResponse` contains `id`, `sent_at` and `send_count`, not the complete
+message. Review `app/schemas/email.py` before changing the HTTP contract.
 
-**Important Fields:**
-```python
-class Email(Base):
-    id: int              # Unique identifier
-    gmail_message_id: str # ID from Gmail API
-    gmail_thread_id: str  # Thread ID for reply detection
-    to: str              # Recipient email
-    subject: str         # Email subject
-    body_text: str       # Plain text version
-    body_html: str       # HTML version
-    sent_at: datetime    # When sent
-    send_count: int      # How many times resent
-    responded: bool      # Has reply been detected?
-    responded_at: datetime
-    responded_source: str # "gmail" or "manual"
-    last_checked_at: datetime
-    attachments: relationship  # List of EmailAttachment objects
+## History, resend and reply checks
+
+`list_history(db, limit, offset, sort)` scopes both the count and returned rows,
+then calculates relative time and emoji using the same account's settings.
+Replied items show 🟢; other statuses use the configured minute bounds.
+
+`resend_email(db, email_id)` first authorizes ownership. It sends the original
+content/attachments, increments send count and updates the same row's sent time,
+Gmail IDs and response state.
+
+`check_reply(db, email_id)` authorizes the record before using Gmail. The detector
+returns a `ReplyCheckResult` dataclass with `replied`, `replied_at` and `reason`.
+It fetches the selected Gmail's profile and stored thread, looking for messages
+newer than the send from another sender. The service updates local response state.
+
+Deleting history removes email and child attachment rows; physical upload cleanup
+and Gmail message deletion are not implemented by that route.
+
+## Templates and settings
+
+Template CRUD scopes queries by account. Placeholder detection collects unique
+keys matching `{{key}}` in first-appearance order across subject/text/HTML.
+Updating a template recreates its detected fields.
+
+Substitution and dynamic fields belong to the frontend composer, not the backend
+send service. Settings are fetched/created and updated for the authorized account.
+
+## Configuration, Docker and migrations
+
+See [the configuration table](../README.md#configuration) and [.env.example](.env.example).
+Run backend development commands from `backend/` so relative data/storage paths
+resolve correctly.
+
+Docker mounts the host database, secrets and storage directories and runs
+`alembic upgrade head` before Uvicorn. Development Uvicorn does not run migrations.
+Do not start both backends against the same database.
+
+Migration `b4a81e220001` assigns legacy records to `srcaetite@gmail.com` without
+changing existing IDs or file paths. Its downgrade intentionally fails rather
+than remove account ownership. [ACCOUNTS.md](ACCOUNTS.md) explains backups,
+one-time legacy rehearsal and restoring a matching snapshot/code version.
+
+Do not assume every migration is safely reversible or that the SQLite schema
+change is covered by one transactional rollback.
+
+## Tests and development checklist
+
+From `backend/` with its virtual environment active:
+
+```sh
+python -m pip install -e '.[test]'
+python -m unittest discover -s tests -v
 ```
 
-**Why This Matters:**
-- `gmail_message_id` and `gmail_thread_id` link to Gmail API
-- `send_count` tracks resends
-- `responded` and `responded_source` show reply status
-- Relationships enable automatic cascade deletion
-
----
-
-#### **`app/models/email_attachment.py`** - Attachment Model
-**Purpose:** Store metadata about email attachments.
-
-**Fields:**
-```python
-class EmailAttachment(Base):
-    id: int
-    email_id: int        # Foreign key to Email
-    filename: str
-    mime_type: str       # "application/pdf", "image/png", etc
-    size_bytes: int
-    storage_path: str    # Local filesystem path
-    disposition: str     # "attachment" or "inline"
-    content_id: str      # For inline images (cid:xxx)
-```
-
-**Why Separate Table:**
-One email can have multiple attachments. Normalization prevents data duplication.
-
----
-
-#### **`app/models/template.py`** - Template Model
-**Purpose:** Store email templates with placeholders.
-
-**Fields:**
-```python
-class Template(Base):
-    id: int
-    name: str
-    subject_template: str      # "Hello {{company}}"
-    body_text_template: str
-    body_html_template: str
-    placeholders: relationship  # List of TemplatePlaceholder
-```
-
-**Relationship:**
-One template has many placeholders. Allows dynamic form generation.
-
----
-
-### Schemas Layer (`app/schemas/`)
-
-Pydantic models for request/response validation.
-
-#### **`app/schemas/email.py`** - Email Schemas
-**Purpose:** Validate incoming requests and serialize database models to JSON.
-
-**Key Schemas:**
-```python
-# Request: what client sends
-class EmailSendRequest(BaseModel):
-    to: str
-    subject: str
-    body_text: str | None
-    body_html: str | None
-    attachments: list[EmailAttachmentIn]
-
-# Response: what API returns
-class EmailSendResponse(BaseModel):
-    id: int
-    to: str
-    sent_at: datetime
-    send_count: int
-    
-    class Config:
-        from_attributes = True  # Convert SQLAlchemy model to dict
-
-# History item for list responses
-class EmailHistoryItem(BaseModel):
-    id: int
-    to: str
-    subject: str
-    sent_at: datetime
-    send_count: int
-    responded: bool
-    relative_time: str  # "2 hours ago"
-    status_emoji: str   # "🟡"
-```
-
-**Key Concepts to Study:**
-- Pydantic validation (type hints, Field constraints)
-- Request/response serialization
-- `from_attributes = True` (ORM mode) for model conversion
-- Field constraints (min_length, max_length, ge, le)
-
-**Why Separate from Models:**
-- Models represent database schema
-- Schemas represent API contract
-- Different concerns: persistence vs. data transfer
-
----
-
-### Services Layer (`app/services/`)
-
-Business logic and orchestration. Services call models, external APIs, and databases.
-
-#### **`app/services/email_service.py`** - Email Business Logic
-**Purpose:** Core functionality (create, send, resend, check replies).
-
-**Key Functions:**
-
-**`create_email(db, data, gmail_message_id, gmail_thread_id)`**
-- Inserts email and attachments into database
-- Called after successful Gmail send
-
-**`list_history(db, limit, offset)`**
-- Fetches paginated email history
-- Calculates status emoji based on time thresholds
-- Returns formatted response
-
-**`resend_email(db, email_id)`**
-- Fetches original email from DB
-- Calls Gmail API to send (via `send_email_via_gmail`)
-- Updates sent_at and send_count
-- Resets responded status
-
-**`check_reply(db, email_id)`**
-- Fetches email and its Gmail thread ID
-- Calls Gmail API to get thread
-- Detects if new messages arrived after sent_at
-- Updates responded status if reply found
-
-**Key Concepts to Study:**
-- Transaction management (db.commit, db.refresh)
-- Query building with SQLAlchemy (db.get, db.query, filters)
-- External API integration (calling Gmail service)
-- Error handling and validation
-
-**Why Services Matter:**
-- Decouples API routes from business logic
-- Makes logic reusable (can call same service from different routes)
-- Easier to test (mock external dependencies)
-
----
-
-#### **`app/services/template_service.py`** - Template Logic
-**Purpose:** Template CRUD and placeholder handling.
-
-**Key Concepts:**
-- Regex for placeholder detection (`{{key}}` pattern)
-- Template substitution
-- Dynamic form generation
-
----
-
-### Gmail Integration (`app/gmail/`)
-
-External API wrappers for Gmail.
-
-#### **`app/gmail/gmail_client.py`** - Gmail Authentication
-**Purpose:** Manage OAuth tokens and build authenticated Gmail service.
-
-**Key Functions:**
-
-**`get_valid_credentials()`**
-- Loads token from `backend/secrets/token.json`
-- Checks if expired
-- Refreshes if needed
-- Returns credentials object
-
-**`get_gmail_service()`**
-- Calls `get_valid_credentials()`
-- Builds Google API client
-- Returns authenticated service for API calls
-
-**Key Concepts to Study:**
-- Google Auth library (google-auth)
-- Token refresh mechanism
-- File I/O for token storage
-
-**Why Separate:**
-Centralizes all Gmail auth logic. Easy to add token refresh, caching, error handling.
-
----
-
-#### **`app/gmail/gmail_sender.py`** - Email Sending
-**Purpose:** Build MIME messages and send via Gmail API.
-
-**Key Function:**
-
-**`build_email_message(to, subject, body_text, body_html, attachments)`**
-- Creates RFC 2822 email structure
-- Handles multipart (text + HTML + attachments + inline images)
-- Sets proper headers (From, To, Subject, Message-ID)
-- Returns MIMEMultipart object
-
-**`send_email_via_gmail(service, to, subject, body_text, body_html, attachments)`**
-- Calls `build_email_message()`
-- Encodes as base64
-- Calls Gmail API `messages.send()`
-- Returns `{"gmail_message_id": "...", "gmail_thread_id": "..."}`
-
-**Key Concepts to Study:**
-- MIME (Multipurpose Internet Mail Extensions)
-- RFC 2822 email format
-- Email headers and structure
-- Base64 encoding
-- Gmail API messages.send endpoint
-
-**Why This Matters:**
-Gmail API requires RFC 2822 format. Understanding MIME is crucial for:
-- Attachments
-- Inline images
-- Text + HTML alternatives
-- Proper encoding
-
----
-
-#### **`app/gmail/reply_detector.py`** - Reply Detection
-**Purpose:** Detect if email has been replied to.
-
-**Key Function:**
-
-**`check_thread_for_reply(service, thread_id, sent_at)`**
-- Fetches thread from Gmail API
-- Iterates messages in thread
-- Finds message from someone else after sent_at
-- Returns `{"replied": True/False}`
-
-**Logic:**
-```
-FOR each message in thread:
-  IF message.date > sent_at AND message.from != user_email:
-    RETURN replied = True
-END FOR
-RETURN replied = False
-```
-
-**Key Concepts to Study:**
-- Gmail API threads.get endpoint
-- Message parsing
-- Timestamp comparison
-- Thread vs. message distinction
-
----
-
-### Database Layer (`app/db/`)
-
-Database configuration and utilities.
-
-#### **`app/db/database.py`** - Connection & Sessions
-**Purpose:** Configure SQLite connection and provide session management.
-
-**Key Concepts to Study:**
-- SQLAlchemy engine creation
-- Database URL (sqlite:///db.sqlite)
-- Session factories
-- Connection pooling
-
----
-
-#### **`app/db/deps.py`** - Dependency Injection
-**Purpose:** Provide database session to routes.
-```python
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-```
-
-**Usage in routes:**
-```python
-def send_email(payload: EmailSendRequest, db: Session = Depends(get_db)):
-    # db is automatically injected
-```
-
-**Why This Pattern:**
-- Automatic session cleanup
-- Consistent database access
-- Testable (can inject mock)
-
----
-
-### Core Utilities (`app/core/`)
-
-#### **`app/core/config.py`** - Configuration
-**Purpose:** Load environment variables.
-
-**Key Variables:**
-- `GOOGLE_OAUTH_CLIENT_SECRETS_FILE` - Path to credentials.json
-- `GOOGLE_OAUTH_TOKEN_FILE` - Path to token.json
-- `GOOGLE_OAUTH_REDIRECT_URI` - Callback URL
-- `GOOGLE_OAUTH_SCOPES` - Gmail API permissions
-
-**Why Externalized:**
-Different configs for dev/prod without changing code.
-
----
-
-#### **`app/core/time_utils.py`** - Time Formatting
-**Purpose:** Format relative time ("2 hours ago") and calculate status emojis.
-
-**Functions:**
-- `format_relative_time(dt)` - Returns "2 hours ago"
-- `pick_status_emoji(minutes, thresholds)` - Returns ⚪🔵🟡🔴 based on time
-
----
-
-### Migrations (`alembic/`)
-
-#### **What is Alembic?**
-Version control for database schema.
-
-**Key Files:**
-- `alembic/versions/` - Each file is a migration step
-- `alembic/env.py` - Migration configuration
-- `alembic.ini` - CLI configuration
-
-**Example Migration:**
-```python
-def upgrade():
-    op.add_column('emails', sa.Column('send_count', sa.Integer(), ...))
-
-def downgrade():
-    op.drop_column('emails', 'send_count')
-```
-
-**Key Concepts to Study:**
-- Database versioning
-- Schema evolution
-- Backward compatibility
-- `alembic upgrade head` / `alembic downgrade`
-
-**Why Migrations Matter:**
-- Track schema changes in git
-- Deploy to production safely
-- Rollback if needed
-- Team coordination
-
----
-
-## Data Flow: Sending an Email
-```
-Frontend (compose.js)
-    |
-    └─► POST /api/emails/send-multipart
-        ↓
-    EmailRouter (api/emails.py::send_email_multipart)
-        |
-        ├─► get_gmail_service() [gmail_client.py]
-        │   └─► Returns authenticated Gmail service
-        |
-        ├─► send_email_via_gmail() [gmail_sender.py]
-        │   ├─► build_email_message() [Creates MIME message]
-        │   ├─► messages.send() [Gmail API call]
-        │   └─► Returns {gmail_message_id, gmail_thread_id}
-        |
-        └─► create_email() [email_service.py]
-            ├─► INSERT into emails table
-            ├─► INSERT into email_attachments table
-            ├─► db.commit()
-            └─► Returns EmailSendResponse
-
-    Response
-        |
-        └─► Frontend updates history view
-```
-
----
-
-## Data Flow: Checking for Replies
-```
-Frontend (history.js)
-    |
-    └─► POST /api/emails/{id}/check-reply
-        ↓
-    EmailRouter (api/emails.py::check_reply_now)
-        |
-        ├─► check_reply() [email_service.py]
-        │   |
-        │   ├─► db.get(Email, email_id)
-        │   ├─► get_gmail_service()
-        │   ├─► check_thread_for_reply() [reply_detector.py]
-        │   │   ├─► threads.get(thread_id) [Gmail API]
-        │   │   ├─► Iterate messages
-        │   │   └─► Detect reply
-        │   |
-        │   ├─► UPDATE email.responded = True
-        │   ├─► UPDATE email.responded_at = now()
-        │   └─► db.commit()
-        |
-        └─► Response {responded: True/False, ...}
-
-    Frontend
-        |
-        └─► Update history with 🟢 emoji if replied
-```
-
----
-
-## What to Study: Technology Prerequisites
-
-### 1. **FastAPI & Web Frameworks** (2-3 days)
-**Why:** Understand how HTTP requests are routed and responses are built.
-
-**Topics:**
-- Route decorators (`@app.post`, `@app.get`)
-- Path & query parameters
-- Request/response bodies
-- Status codes
-- Exception handling
-- Middleware
-
-**Resources:**
-- FastAPI official tutorial: https://fastapi.tiangolo.com/
-- Real Python FastAPI articles
-
----
-
-### 2. **Pydantic & Data Validation** (1-2 days)
-**Why:** Understand how data is validated before reaching business logic.
-
-**Topics:**
-- Type hints
-- Field validation
-- Custom validators
-- ORM mode (`from_attributes`)
-- JSON serialization
-
-**Resources:**
-- Pydantic docs: https://docs.pydantic.dev/
-
----
-
-### 3. **SQLAlchemy & ORM** (3-4 days)
-**Why:** Understand how Python objects map to database tables.
-
-**Topics:**
-- Declarative models
-- Column types & constraints
-- Relationships (one-to-many, foreign keys)
-- Query building
-- Sessions & transactions
-- Cascade delete
-
-**Resources:**
-- SQLAlchemy docs: https://docs.sqlalchemy.org/
-- Real Python SQLAlchemy tutorial
-
----
-
-### 4. **Alembic Migrations** (1 day)
-**Why:** Understand how to safely evolve database schema.
-
-**Topics:**
-- Migration files
-- Upgrade & downgrade
-- Auto-generate migrations
-- Reversible changes
-
-**Resources:**
-- Alembic docs: https://alembic.sqlalchemy.org/
-
----
-
-### 5. **OAuth 2.0 & Authentication** (2 days)
-**Why:** Understand the authentication flow.
-
-**Topics:**
-- OAuth 2.0 authorization code flow
-- Authorization vs. authentication
-- Token exchange
-- Redirect URIs
-- Scopes & permissions
-
-**Resources:**
-- OAuth.net: https://oauth.net/2/
-- Google OAuth docs: https://developers.google.com/identity/protocols/oauth2
-
----
-
-### 6. **Gmail API** (2-3 days)
-**Why:** Understand how to send emails and detect replies.
-
-**Topics:**
-- Authentication with Gmail API
-- Messages.send endpoint
-- Messages.get endpoint
-- Threads.get endpoint
-- MIME message format
-- Message IDs & thread IDs
-
-**Resources:**
-- Gmail API docs: https://developers.google.com/gmail/api
-- RFC 2822: https://tools.ietf.org/html/rfc2822
-
----
-
-### 7. **Email & MIME Format** (1-2 days)
-**Why:** Understand email structure and attachments.
-
-**Topics:**
-- RFC 2822 email format
-- MIME multipart messages
-- Content-Type headers
-- Base64 encoding
-- Inline vs. attachment disposition
-- Content-ID for inline images
-
-**Resources:**
-- RFC 2822: https://tools.ietf.org/html/rfc2822
-- MIME RFC: https://tools.ietf.org/html/rfc2045
-
----
-
-### 8. **Python Advanced** (1 week, ongoing)
-**Topics:**
-- Type hints & annotations
-- Async/await (FastAPI uses it)
-- Context managers (with statements)
-- Generators & yields
-- Dependency injection patterns
-
----
-
-## How to Navigate the Codebase
-
-### Starting Point
-1. Read `app/main.py` - Understand app initialization
-2. Read `app/api/emails.py` - See all available routes
-3. Pick one route and trace it:
-   - Route handler
-   - Service layer call
-   - Database query
-   - Response
-
-### Example: Trace `POST /api/emails/send-multipart`
-1. Start: `api/emails.py::send_email_multipart()`
-2. Calls: `get_gmail_service()` → `gmail_client.py`
-3. Calls: `send_email_via_gmail()` → `gmail_sender.py`
-4. Calls: `create_email()` → `services/email_service.py`
-5. Uses: `Email` model → `models/email.py`
-6. Uses: `EmailAttachment` model → `models/email_attachment.py`
-7. Returns: `EmailSendResponse` schema → `schemas/email.py`
-
----
-
-## Common Tasks & Where to Find Them
-
-| Task | File | Function |
-|------|------|----------|
-| Add new email field | `models/email.py` + migration | Define Column |
-| Add new API endpoint | `api/emails.py` | Add @router.post() |
-| Change email sending logic | `services/email_service.py` | Modify send logic |
-| Fix Gmail integration | `gmail/gmail_sender.py` | Modify MIME building |
-| Change reply detection | `gmail/reply_detector.py` | Modify thread checking |
-| Update database schema | `alembic/versions/` | Create migration |
-| Add validation | `schemas/email.py` | Add Field constraints |
-
----
-
-## Testing Strategy
-
-### Unit Tests (for services)
-```python
-# tests/test_email_service.py
-def test_create_email():
-    # Mock database
-    # Call create_email()
-    # Assert email created with correct fields
-```
-
-### Integration Tests (for routes)
-```python
-# tests/test_emails_api.py
-def test_send_email_endpoint(client):
-    # POST /api/emails/send
-    # Assert 201 response
-    # Assert email in database
-    # Assert Gmail API called
-```
-
-### Key Concepts to Test:
-- Service logic (business rules)
-- API responses (status codes, schema)
-- Database state (data persisted)
-- Gmail API calls (mocked)
-- Error handling (invalid input, auth failures)
-
----
-
-## Deployment Checklist
-
-Before deploying to production:
-
-- [ ] `credentials.json` and `token.json` NOT in git
-- [ ] `.env` file with production values
-- [ ] Database migrations ran (`alembic upgrade head`)
-- [ ] Tests passing
-- [ ] Error logging configured
-- [ ] CORS configured for production domain
-- [ ] Rate limiting implemented
-- [ ] Input validation complete
-- [ ] Gmail API credentials rotated if needed
-- [ ] Database backed up
-
----
-
-## Next Steps
-
-1. **Learn the prerequisites** in order (FastAPI → Pydantic → SQLAlchemy)
-2. **Trace one complete flow** (e.g., sending an email)
-3. **Make a small change** (add a new field to Email model)
-4. **Write a test** for your change
-5. **Explore edge cases** (what if attachment is too large? what if Gmail API fails?)
-
-Good luck! 🚀
+- `test_accounts.py`: session/membership, per-account CRUD/history/settings,
+  rejected foreign IDs, upload namespacing, credential selection and mocked OAuth.
+- `test_account_migration.py`: legacy rows/relationships survive the migration,
+  restart is idempotent, and integrity/foreign-key checks pass.
+- `serve_browser_fixture.py`: explicitly started disposable UI-test backend,
+  with simulated OAuth and sending disabled. Not imported by production.
+
+Before adding a feature:
+
+1. Trace its route, authorization dependency, service and model.
+2. Scope every query and parent lookup; test both owning and foreign accounts.
+3. Mock Gmail calls. Do not send real mail as part of automated tests.
+4. Add a migration when persistence changes, and test existing-data preservation.
+5. Update schemas, frontend callers and documentation together.
+6. Back up before applying changes to the user's installation.
+
+## Learning path
+
+Use this repository to study HTTP/dependency injection, Pydantic validation,
+SQLAlchemy relationships/transactions, migrations, OAuth state/PKCE, MIME and
+test isolation. Trace sending first, then a cross-account 404 and a reconnect.
+
+Suggested code-reading order: `main.py` → `account_service.py` →
+`api/emails.py` → `email_service.py` → Gmail helpers → models/schemas →
+migration tests. The application is local-first; production readiness requires
+additional hardening, not only a successful build.

@@ -1,314 +1,111 @@
-# Mail Orchestrator
+# Mail Orchestrator: product and architecture
 
-Local-first email composer and sent mail tracker powered by Gmail.  
-Built as a portfolio-grade project with clean architecture, strong UI identity, and a future-proof backend design.
+Mail Orchestrator is a local-first Gmail composer and sent-mail tracker.
+Its purpose is to help with outreach and follow-up: know what was sent, which
+messages received replies and when to act again.
 
-Repository name: `mail-orchestrator`  
-Project name: `Mail Orchestrator`
+This document describes the implemented design. For commands, use
+[SETUP.md](SETUP.md); for the engineering narrative, see [JOURNEY.md](JOURNEY.md).
 
-## Product overview
+## Product scope
 
-A local app with two decoupled parts:
+The application supports multiple Gmail accounts within one local installation.
+Every Gmail has its own history, attachments, templates, placeholders and
+settings. It is not a public hosting platform or a separate organization/user
+management system.
 
-- **Frontend**: HTML, SCSS, and vanilla JavaScript running on a dev server with hot reload
-- **Backend**: Python with FastAPI, REST, native Swagger, and hot reload
-- **Database**: local SQLite
-- **Google login**: local OAuth using an existing GCP project
-- **Gmail integration**: send and read emails via Gmail API
-- **History**: sent list with reply status, manual recheck, and resend
-- **Templates**: placeholders detected automatically and rendered as dynamic fields
+The frontend is vanilla JavaScript/HTML/SCSS with Vite. The backend is Python with
+FastAPI, Pydantic and SQLAlchemy. SQLite stores local state; Alembic evolves the
+schema. Docker optionally serves the frontend through Nginx and runs the API
+with the same persistent host directories.
 
-## Stack decisions
+## Account ownership is part of the model
 
-### Backend
+- `accounts` identifies a Gmail address and stores encrypted Google credentials.
+- `emails`, `templates` and `settings` have an `account_id`.
+- Attachments inherit ownership from their email; placeholders from their template.
+- Settings have a unique owner, rather than a global fixed row with ID 1.
+- Browser sessions are associated only with accounts authorized in that browser.
+- OAuth attempts store browser-bound state, an encrypted PKCE verifier and expiry.
 
-- **FastAPI**  
-  Provides Swagger at `/docs` and OpenAPI at `/openapi.json`.
-- **SQLite**  
-  Local file-based database, ideal for local-first and portfolio iteration.
-- **SQLAlchemy + Alembic**  
-  ORM plus migrations to keep the project ready for a future deployment.
-- **Google Auth + Gmail API**  
-  OAuth flow and Gmail API calls.
+The account selected in the UI is stored per tab. Every API data request identifies
+it explicitly, and the backend validates session membership before running scoped
+queries. Sending and checking replies use that account's Gmail credentials.
 
-### Frontend
+Switching accounts reloads the workspace after confirmation. Unsaved changes are
+discarded. Disconnecting clears the account's local credentials and browser
+associations without deleting saved data. Reconnecting restores access to the
+same account's records.
 
-- **Vite** as dev server  
-  The code stays vanilla, while Vite delivers hot reload and an easy build pipeline.
-- **SCSS** compiled via Vite pipeline.
+## OAuth design
 
-## One-command development workflow
+The project uses the Google **Web application** authorization-code flow, not an
+installed-app client. The default callback is
+`http://localhost:8000/api/auth/callback`.
 
-At the repository root, a single command runs everything:
+The backend obtains the address from Gmail's authenticated profile, not a text
+field provided by the browser. Credentials are encrypted in SQLite using the
+Fernet key at `backend/secrets/account-token.key`. Only a random session identifier
+is sent in the HttpOnly cookie; the browser does not store Google tokens.
 
-- backend with hot reload
-- frontend with hot reload
-- opens the browser automatically
+OAuth state/PKCE are checked against the initiating browser and consumed once.
+The frontend supports both popup and same-tab continuation. See
+[account lifecycle and migration](backend/ACCOUNTS.md).
 
-Target command:
+## Compose, templates and MIME
 
-- `npm run dev`
+The composer has a visual Editor and Preview. Plain text is derived for sending
+alongside HTML. Rich text conversion is intentionally practical rather than a
+lossless round-trip editor.
 
-## Gmail constraints that shape the system
+The backend detects ordered unique placeholder keys with
+`\{\{\s*([a-zA-Z0-9_]+)\s*\}\}`. The frontend builds the fields and substitutes
+their values before sending. Templates and their fields are account-specific.
 
-### Sending emails
+Files are uploaded, not referenced by arbitrary server paths. New files use
+account-specific directories with unique names. Inline images are displayed as
+data URLs in the browser and sent with MIME Content-ID references.
 
-Gmail API can send via `messages.send` or `drafts.send` using an RFC 2822 message encoded as base64url in the `raw` field.
+The MIME builder creates a text body, optional HTML alternative, related inline
+parts and regular attachments. Gmail sending uses `messages.send`; the local
+record stores the returned message and thread IDs.
 
-This supports:
+## History and replies
 
-- plain text
-- HTML
-- attachments
-- inline images via MIME
+History shows recipient, subject, sent time, send count and response state.
+It is paginated and can be sorted newest/oldest first.
 
-### Reply detection
+Time-based statuses use the active account's thresholds. A response, detected
+through Gmail or marked manually, takes precedence and displays 🟢.
 
-The system must store `threadId` and `messageId` returned when sending.
+A reply check fetches the saved thread and looks for a newer message from another
+sender. Resending updates the original local record and its latest Gmail IDs,
+rather than adding a separate send-event row. Tracking older resend threads is
+still a limitation.
 
-To check if an email was replied to, the app fetches the thread and verifies whether a later message exists from someone else. Gmail conversations are thread-based and support thread retrieval.
+Deleting a local history entry removes its database attachment records but does
+not delete the Gmail message or clean the physical upload files automatically.
 
-### Pasted images inside the editor
+## Preserving existing data
 
-Gmail is not friendly with base64 images directly inside the HTML body.
+The account migration assigns original records to `srcaetite@gmail.com`, as
+explicitly confirmed by the owner. Relationships and file paths are preserved.
+The old global token is retained on disk but not used for authorization.
 
-The most compatible approach is attaching pasted images as MIME inline parts and referencing them using `cid:` in the HTML.
+The migration is preceded by backup and can be rehearsed against a temporary
+copy. The verification helper compares pre-existing rows and file contents.
+See [backup scope and rollback precautions](backend/ACCOUNTS.md).
 
-### Local OAuth
+## Boundaries and next steps
 
-For a local app, the installed application flow usually uses a redirect to `http://localhost` and works well for local development.
-
-## Database model (SQLite)
-
-### Table: `emails`
-
-Main fields:
-
-- `id` (uuid or int)
-- `gmail_message_id` (string)
-- `gmail_thread_id` (string)
-- `to` (string)
-- `subject` (string)
-- `body_text` (text)
-- `body_html` (text)
-- `sent_at` (datetime)
-- `send_count` (int)
-- `responded` (bool)
-- `responded_at` (datetime, nullable)
-- `responded_source` (enum: `gmail`, `manual`)
-- `last_checked_at` (datetime, nullable)
-
-### Table: `email_attachments`
-
-- `id`
-- `email_id` (fk)
-- `filename`
-- `mime_type`
-- `size_bytes`
-- `storage_path` (local storage path)
-- `disposition` (enum: `attachment`, `inline`)
-- `content_id` (for inline CID references)
-
-### Table: `templates`
-
-- `id`
-- `name`
-- `subject_template`
-- `body_text_template`
-- `body_html_template`
-
-### Table: `template_placeholders`
-
-- `id`
-- `template_id`
-- `key` (example: `{{company}}`)
-- `label` (example: `Company`)
-- `order_index`
-
-This supports generating placeholder-driven forms on the frontend.
-
-### Table: `settings`
-
-- `id` (always 1)
-- thresholds for time emojis:
-  - `t_white_minutes`
-  - `t_blue_minutes`
-  - `t_yellow_minutes`
-  - `t_red_minutes`
-
-Emoji rules:
-
-- replied always uses `🟢`
-- otherwise select `⚪🔵🟡🔴` based on elapsed time since `sent_at`
-
-## REST API (with Swagger)
-
-### Auth
-
-- `GET /api/auth/status`
-- `POST /api/auth/login`  
-  Starts OAuth and returns a consent URL
-- `GET /api/auth/callback`  
-  Receives code and stores tokens
-- `POST /api/auth/logout`
-
-### Emails
-
-- `POST /api/emails/send`  
-  Payload includes: `to`, `subject`, `body_text`, `body_html`, attachment metadata, inline image mapping
-- `GET /api/emails/history?limit=50&offset=0`
-- `POST /api/emails/{id}/resend`
-- `POST /api/emails/{id}/check-reply`
-- `POST /api/emails/{id}/mark-responded`  
-  Manual override
-
-### Templates
-
-- `GET /api/templates`
-- `POST /api/templates`
-- `GET /api/templates/{id}`
-- `PUT /api/templates/{id}`
-- `DELETE /api/templates/{id}`
-- `GET /api/templates/{id}/placeholders`  
-  Returns detected placeholders
-
-### Settings
-
-- `GET /api/settings`
-- `PUT /api/settings`
-
-## Templates and placeholders
-
-Placeholder format:
-
-- `{{name}}`, `{{company}}`, `{{role}}`
-- any identifier matching `a-zA-Z0-9_`
-
-How placeholders are discovered:
-
-- regex: `\{\{\s*([a-zA-Z0-9_]+)\s*\}\}`
-- unique keys collected
-- ordered by first appearance
-- stored in `template_placeholders`
-
-Composer flow:
-
-- user selects a template
-- frontend fetches `/placeholders`
-- frontend renders placeholder inputs dynamically
-- backend substitutes placeholder values into subject and body at send time
-
-## Editor requirements
-
-Two editing modes must remain synchronized:
-
-- Text tab
-- HTML tab
-
-Practical sync approach:
-
-- Text to HTML: convert line breaks into `<br>` and wrap into `<p>`
-- HTML to Text: use `DOMParser` and extract `textContent` while preserving main breaks
-
-Expected limitation:
-
-Perfect bidirectional conversion is a deep problem. This project targets recruitment and follow-up workflows, where this approach is reliable and easy to explain as an intentional tradeoff.
-
-Editor UI plan:
-
-- 3 tabs: `Text`, `HTML`, `Preview`
-- when editing Text, the HTML tab shows the generated HTML
-- when editing HTML, the Text tab shows the extracted plain text
-- Preview renders the final HTML output
-
-## Attachments and pasted images
-
-Requirements:
-
-- attachments are managed in a separate field outside the message editor
-- pasted images from clipboard are supported
-
-Suggested behavior:
-
-- when an image is pasted, it becomes an item in an Inline Images panel
-- HTML editor inserts `<img src="cid:...">`
-- text editor inserts `[image: filename.png]`
-
-Send pipeline:
-
-- build a MIME multipart message
-  - `alternative`: `text/plain` and `text/html`
-  - `related`: inline images with Content-ID
-  - `mixed`: regular attachments
-
-## History, refresh, status, resend
-
-History entries display:
-
-- subject
-- recipient
-- absolute sent date
-- relative time like “X minutes ago”, “X hours ago”, “X days ago”
-- emoji `⚪🔵🟡🔴` based on configurable thresholds
-- `🟢` when replied, either Gmail-detected or manual
-
-Per-item actions:
-
-- check reply now
-- mark as replied manually
-- resend
-
-Reply check:
-
-- fetch Gmail thread and check whether there is a later message from a different sender after `sent_at`
-
-## Follow-ups in the future
-
-Not implemented now, but designed for it.
-
-Future table concept: `email_followups`
-
-- `parent_email_id`
-- `subject`
-- `body_text`
-- `body_html`
-- `order_index`
-
-Future resend flow:
-
-- user chooses to resend the original or a follow-up variant
-
-For now:
-
-- keep architecture and folder structure ready for this feature.
-
-## Repository folder structure
-
-```text
-mail-orchestrator/
-  backend/
-    app/
-      api/
-      core/
-      db/
-      gmail/
-      models/
-      schemas/
-      services/
-    tests/
-    pyproject.toml
-    alembic.ini
-  frontend/
-    src/
-      assets/
-      styles/
-      pages/
-      components/
-    index.html
-    vite.config.js
-    package.json
-  scripts/
-    dev.mjs
-  README.md
-  package.json
-```
+Account isolation protects application-level access; it is not full encryption
+of the mailbox database. Email bodies and attachments remain ordinary local data.
+Public hosting would require additional network, HTTPS, abuse-control and
+operational work.
+
+Future features include follow-up chains, scheduling, richer resend history and
+importing sent messages. Multi-account support and persistent Docker deployment
+are already implemented.
+
+See the [API overview](README.md#api), [developer guide](backend/GUIDE.md) and
+[known limitations](TECHNICAL_DEBT.md) for details.

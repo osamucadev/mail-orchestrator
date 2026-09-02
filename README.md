@@ -1,552 +1,269 @@
 # Mail Orchestrator
 
-[![Status](https://img.shields.io/badge/status-in%20progress-blue)](#)
 [![License](https://img.shields.io/badge/license-MIT-green)](#license)
 [![Python](https://img.shields.io/badge/python-3.12%2B-3776AB?logo=python&logoColor=white)](#tech-stack)
-[![FastAPI](https://img.shields.io/badge/FastAPI-latest-009688?logo=fastapi&logoColor=white)](#tech-stack)
-[![Node](https://img.shields.io/badge/node-18%2B-339933?logo=node.js&logoColor=white)](#tech-stack)
-[![Vite](https://img.shields.io/badge/Vite-latest-646CFF?logo=vite&logoColor=white)](#tech-stack)
-[![SQLite](https://img.shields.io/badge/SQLite-local-003B57?logo=sqlite&logoColor=white)](#tech-stack)
-[![Gmail API](https://img.shields.io/badge/Gmail%20API-enabled-EA4335?logo=gmail&logoColor=white)](#gmail-integration)
-[![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen)](#contributing)
+[![Gmail API](https://img.shields.io/badge/Gmail%20API-enabled-EA4335?logo=gmail&logoColor=white)](#features)
 
-![Mail Orchestrator User Interface](./screenshot.png)
+![Mail Orchestrator interface](./screenshot.png)
 
-Local-first email composer and sent mail tracker powered by Gmail.  
-Designed as a portfolio-grade project: clean architecture, strong UI identity, and a backend prepared for future deployment.
+Local-first email composer and sent-mail tracker powered by Gmail. Connect multiple
+Gmail accounts and keep each account's history, attachments, templates and settings
+separate. The screenshot above predates the account selector.
 
-Repo: `mail-orchestrator`  
-Project: **Mail Orchestrator**
+## Contents
 
----
-
-## Table of contents
-
-- [Why](#why)
-- [Core features](#core-features)
-- [Product scope](#product-scope)
-- [Tech stack](#tech-stack)
-- [Architecture](#architecture)
-- [Data model](#data-model)
+- [Features](#features)
+- [Getting started](#getting-started)
+- [Multiple Gmail accounts](#multiple-gmail-accounts)
+- [Architecture and data](#architecture-and-data)
 - [API](#api)
-- [Editor and formatting](#editor-and-formatting)
-- [OAuth credentials](#oauth-credentials)
-- [Gmail integration](#gmail-integration)
-- [Local-first and security](#local-first-and-security)
-- [Docker deployment](#docker-deployment)
-- [Development](#development)
+- [Configuration](#configuration)
+- [Docker and persistent data](#docker-and-persistent-data)
+- [Security and limitations](#security-and-limitations)
+- [Tests](#tests)
+- [Documentation](#documentation)
 - [Roadmap](#roadmap)
-- [Project structure](#project-structure)
-- [Contributing](#contributing)
-- [License](#license)
 
----
+## Features
 
-## Known Limitations
+- Connect, switch and reconnect Gmail accounts through Google OAuth.
+- Compose text/HTML messages using the visual Editor and Preview tabs.
+- Paste inline images and upload regular attachments; send via Gmail with MIME.
+- Create account-specific templates with automatically detected placeholders.
+  The frontend applies placeholder values before sending.
+- Browse account-specific sent history, newest or oldest first, with pagination.
+- Recheck replies, mark a response manually, resend or delete local history entries.
+- Configure independent time thresholds for ⚪ 🔵 🟡 🔴; 🟢 indicates a response.
+- Run locally in development or as two persistent Docker containers.
 
-See [TECHNICAL_DEBT.md](./TECHNICAL_DEBT.md) for known issues and limitations.
+## Getting started
 
----
+Configure a Google **Web application** OAuth client with Gmail API enabled and
+this exact redirect URI:
 
-## Why
+```text
+http://localhost:8000/api/auth/callback
+```
 
-Sending a lot of outreach emails is easy. Tracking what was sent, what got replies, and what should be followed up is where most workflows break.
+Save the downloaded, valid JSON as `backend/secrets/credentials.json`. The
+[annotated example](backend/secrets/credentials-example.jsonc) is a reference,
+not a ready-to-use credentials file: JSON comments and placeholder values must
+not be copied into the runtime file.
 
-**Mail Orchestrator** is a local-first tool to:
+With Docker and the Compose plugin installed, run from the repository root:
 
-- compose emails fast with templates
-- send via Gmail with proper MIME support
-- track sent history with reply detection
-- recheck replies anytime
-- resend or follow up with intention
+```sh
+docker compose up -d --build --wait
+```
 
----
+Open [Mail Orchestrator](http://localhost:5173) and select **Open Gmail Login**.
+An existing installation should be backed up before starting code that applies
+new migrations. See [backup and migration instructions](backend/ACCOUNTS.md).
 
-## Core features
+For development installation on Linux, macOS or Windows, use [SETUP.md](SETUP.md).
+Do not run the development backend and Docker backend against the same database
+at the same time.
 
-### Compose
+## Multiple Gmail accounts
 
-- Google login via OAuth
-- Compose email with:
-  - `To`
-  - `Subject`
-  - `Message` (Text, HTML, Preview)
-  - Attachments (separate from the message editor)
-  - Clipboard image paste with inline images support
+- **Gmail / sender** selects the account used by the entire workspace.
+- **Add / reconnect account** authorizes another Gmail or restores its connection.
+- **Continue login in this tab** is available as an alternative to the popup.
+- **Disconnect account** removes the account's local credentials and access in
+  all browsers. Its saved data remains; reconnecting the same Gmail restores it.
+  This does not revoke Google's authorization grant.
+- Account selection is per tab. Switching reloads the page after confirmation;
+  unsaved edits are discarded.
+- A new account starts with empty history and templates, and independent defaults.
+  Connecting Gmail does not import existing sent messages from Gmail.
 
-### History
+The backend checks both the browser session and the selected account. Filtering
+is enforced for reads, edits, deletes, sends and reply checks, not just in the UI.
 
-- Sent items stored locally with:
-  - date sent
-  - subject
-  - recipient
-  - relative time (minutes, hours, days)
-  - time emoji status: `⚪🔵🟡🔴`
-  - replied status: `🟢` (exclusive)
-- Manual actions:
-  - recheck reply status anytime
-  - mark replied manually (for replies outside Gmail)
-  - resend an email
+### Existing data
 
-### Templates
+Migration `b4a81e220001` assigns all pre-existing email, template and settings
+records to `srcaetite@gmail.com`, as confirmed by the repository owner. Existing
+attachment and placeholder relationships are preserved.
 
-- Create email templates with unlimited placeholders
-- Placeholders are detected automatically
-- Selecting a template generates a dynamic form for placeholder values
-- Substitution happens on send time
+Log in again with that Gmail after upgrading. The old `secrets/token.json` is
+preserved but no longer used for authentication. This migration has a
+repository-specific owner; it is not an automatic account-discovery migration
+for unrelated installations. See [ACCOUNTS.md](backend/ACCOUNTS.md).
 
-### Settings
+## Architecture and data
 
-- Configure time thresholds for status emojis
-- Order is fixed and configurable by minutes:
-  - `⚪` newest
-  - `🔵` recent
-  - `🟡` aging
-  - `🔴` stale
-- `🟢` is always reserved for replied
+### Tech stack
 
----
+- Backend: Python 3.12+, FastAPI, Pydantic, SQLAlchemy, Alembic and SQLite.
+- Gmail integration: Google Auth libraries, Gmail API and Python MIME support.
+- Credential encryption: Fernet from `cryptography`.
+- Frontend: vanilla JavaScript, HTML, SCSS and Vite.
+- Docker: Python backend plus Nginx serving the production frontend build.
 
-## Product scope
+The frontend calls the API with an HttpOnly session cookie and `X-Account-ID`.
+The authorized account is bound to the request's database session; service
+queries filter ownership and Gmail clients load that account's credentials.
 
-- Runs **fully locally**
-- Backend is designed to be deployment-ready later:
-  - migrations
-  - clean boundaries
-  - environment-based configuration
-- Not targeting multi-user or hosted mode in the first iteration
+| Tables | Purpose and ownership |
+| --- | --- |
+| `accounts` | Unique Gmail address and encrypted Google credentials |
+| `browser_sessions` | Hashed browser-session identifier and expiry |
+| `session_accounts` | Accounts authorized in each browser session |
+| `oauth_attempts` | One-time state, encrypted PKCE verifier and expiry |
+| `emails` | Owner `account_id`, bodies, Gmail IDs, send count and reply status |
+| `email_attachments` | Files and inline-image metadata owned through `email_id` |
+| `templates` | Owner `account_id`, name, subject and body templates |
+| `template_placeholders` | Fields owned through `template_id` |
+| `settings` | One independent threshold configuration per `account_id` |
 
----
-
-## Tech stack
-
-### Backend
-
-- **Python 3.12+**
-- **FastAPI** for REST + Swagger
-- **SQLite** local database
-- **SQLAlchemy** ORM
-- **Alembic** migrations
-
-### Frontend
-
-- **HTML + SCSS + Vanilla JS**
-- **Vite** dev server and build pipeline
-
-### Tooling
-
-- One-command dev workflow (`npm run dev`)
-- Hot reload for frontend and backend
-- Auto-open browser on start
-
----
-
-## Architecture
-
-This repository contains two decoupled apps:
-
-- `frontend/` is a static UI built with vanilla web tech and Vite
-- `backend/` is a REST API built with FastAPI
-
-Communication happens through HTTP only.
-
-### High-level flow
-
-1. User logs in with Google OAuth locally
-2. User composes an email (text, HTML, attachments, inline images)
-3. Backend builds a MIME message and sends via Gmail API
-4. Backend stores metadata locally:
-   - recipient, subject, sent time
-   - Gmail `messageId` and `threadId`
-5. History view can be refreshed anytime
-6. Reply check fetches Gmail thread and detects incoming replies
-
----
-
-## Data model
-
-### `emails`
-
-- `id`
-- `gmail_message_id`
-- `gmail_thread_id`
-- `to`
-- `subject`
-- `body_text`
-- `body_html`
-- `sent_at`
-- `responded`
-- `responded_at`
-- `responded_source` (`gmail` or `manual`)
-- `last_checked_at`
-
-### `email_attachments`
-
-- `email_id`
-- `filename`
-- `mime_type`
-- `size_bytes`
-- `storage_path`
-- `disposition` (`attachment` or `inline`)
-- `content_id` (CID for inline images)
-
-### `templates`
-
-- `name`
-- `subject_template`
-- `body_text_template`
-- `body_html_template`
-
-### `template_placeholders`
-
-- `template_id`
-- `key` (example: `{{company}}`)
-- `label`
-- `order_index`
-
-### `settings`
-
-- `t_white_minutes`
-- `t_blue_minutes`
-- `t_yellow_minutes`
-- `t_red_minutes`
-
----
+A send uploads files, builds MIME, sends through the selected Gmail and then
+stores local history. A resend updates the original record, send count and latest
+Gmail IDs. Reply checks inspect the stored thread using the same owning account.
 
 ## API
 
-FastAPI provides:
+[Swagger](http://localhost:8000/docs) and [OpenAPI](http://localhost:8000/openapi.json)
+describe request/response bodies. Account headers are read by a dependency and
+are not declared as a Swagger authorization scheme.
 
-- Swagger UI: `/docs`
-- OpenAPI spec: `/openapi.json`
+Protected data routes require the `mo_session` cookie and `X-Account-ID`.
+Mutating requests also require `Origin` equal to `FRONTEND_ORIGIN`. A header
+alone cannot authorize access to an account. Browser requests use
+`credentials: "include"`.
 
-### Auth
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET / HEAD | `/api/health` | Public health check |
+| GET | `/api/auth/status` | Connected accounts for this browser; no Google tokens returned |
+| POST | `/api/auth/login` | Start browser-bound OAuth; requires trusted Origin |
+| GET | `/api/auth/callback` | Consume state/code and redirect to the frontend |
+| POST | `/api/auth/logout` | Disconnect the selected account, retaining data |
+| GET | `/api/gmail/profile` | Selected account's Gmail profile |
+| POST | `/api/emails/send` | JSON send without attachments |
+| POST | `/api/emails/send-multipart` | Send with regular files and inline images |
+| GET | `/api/emails/history` | `limit`, `offset`, `sort=recent\|oldest` |
+| POST | `/api/emails/{id}/resend` | Resend an owned record |
+| POST | `/api/emails/{id}/check-reply` | Check its latest Gmail thread |
+| POST | `/api/emails/{id}/mark-responded` | Set manual response state |
+| DELETE | `/api/emails/{id}` | Delete local email and attachment records, not the Gmail message |
+| GET / POST | `/api/templates` | List/create templates |
+| GET / PUT / DELETE | `/api/templates/{id}` | Read/update/delete an owned template |
+| GET | `/api/templates/{id}/placeholders` | List detected fields |
+| GET / PUT | `/api/settings` | Read/update selected account's thresholds |
 
-- `GET /api/auth/status`
-- `POST /api/auth/login`
-- `GET /api/auth/callback`
-- `POST /api/auth/logout`
+JSON requests with attachments are rejected: use multipart uploads rather than
+server filesystem paths. An owned-resource lookup with another account's ID
+returns 404; an account not authorized in the session is rejected.
 
-### Emails
+## Configuration
 
-- `POST /api/emails/send`
-- `GET /api/emails/history?limit=50&offset=0`
-- `POST /api/emails/{id}/resend`
-- `POST /api/emails/{id}/check-reply`
-- `POST /api/emails/{id}/mark-responded`
+Use [backend/.env.example](backend/.env.example) for local development.
 
-### Templates
+| Variable | Default / role |
+| --- | --- |
+| `DATABASE_URL` | `sqlite:///./data/mail_orchestrator.db`, relative to the backend working directory |
+| `GOOGLE_OAUTH_CLIENT_SECRETS_FILE` | `./secrets/credentials.json` |
+| `GOOGLE_OAUTH_REDIRECT_URI` | `http://localhost:8000/api/auth/callback` |
+| `GOOGLE_OAUTH_SCOPES` | Space-separated `gmail.send` and `gmail.readonly` URLs |
+| `FRONTEND_ORIGIN` | `http://localhost:5173`; CORS and mutation Origin validation |
+| `ACCOUNT_TOKEN_KEY_FILE` | Defaults to `account-token.key` beside the legacy token path |
+| `GOOGLE_OAUTH_TOKEN_FILE` | Legacy path `./secrets/token.json`; only helps determine the default key location |
+| `VITE_API_BASE` | Frontend variable, default `http://localhost:8000` |
 
-- `GET /api/templates`
-- `POST /api/templates`
-- `GET /api/templates/{id}`
-- `PUT /api/templates/{id}`
-- `DELETE /api/templates/{id}`
-- `GET /api/templates/{id}/placeholders`
+Keep `GOOGLE_OAUTH_SCOPES` on one line. `VITE_API_BASE` is consumed by Vite at
+development/build time, not by Nginx at runtime. The stock Dockerfile does not
+expose it as a build argument. Backend `.env` is excluded from the Docker image;
+custom Docker settings must be supplied through Compose environment configuration.
 
-### Settings
-
-- `GET /api/settings`
-- `PUT /api/settings`
-
----
-
-## Editor and formatting
-
-Mail Orchestrator supports:
-
-- **Text editing**
-- **HTML editing**
-- **Preview rendering**
-
-Text and HTML remain synchronized:
-
-- Text to HTML: line breaks become `<br>` and are wrapped into paragraphs
-- HTML to Text: extracted via DOM parsing and `textContent`
-
-Tradeoff: perfect bidirectional conversion is complex.  
-This project prioritizes predictable behavior for outreach and follow-up workflows.
-
----
-
-## OAuth credentials
-
-This project uses Google OAuth to access the Gmail API in local development.
-Real OAuth credentials **must never be committed**.
-An example file is provided to guide the setup:
-
-```
-backend/secrets/credentials-example.jsonc
-```
-
-### How to set up
-
-1. Copy the example file:
-
-```
-backend/secrets/credentials-example.jsonc → backend/secrets/credentials.json
-```
-
-2. Follow the step-by-step instructions inside the example file to:
-   - Create a Google Cloud project
-   - Enable the Gmail API
-   - Configure the OAuth consent screen
-   - Create a **Web application** OAuth client
-   - Add the redirect URI:
-     ```
-     http://localhost:8000/api/auth/callback
-     ```
-
-3. Make sure `credentials.json` and `.env` are ignored by git.
-
----
-
-### Environment variables
-
-Create a `.env` file inside `backend/`:
-
-```
-GOOGLE_OAUTH_CLIENT_SECRETS_FILE=./secrets/credentials.json
-GOOGLE_OAUTH_TOKEN_FILE=./secrets/token.json
-GOOGLE_OAUTH_REDIRECT_URI=http://localhost:8000/api/auth/callback
-GOOGLE_OAUTH_SCOPES=https://www.googleapis.com/auth/gmail.send
-https://www.googleapis.com/auth/gmail.readonly
-```
-
----
-
-### Verification
-
-After setup:
-
-1. Start the backend
-2. Call `POST /api/auth/login`
-3. Open the returned `auth_url`
-4. Complete Google consent
-
-If successful:
-
-- Google redirects to the backend callback
-- A token file is created at: `backend/secrets/token.json`
-- `GET /api/auth/status` returns `authenticated: true`
-
----
-
-## Gmail integration
-
-### Sending
-
-Gmail API supports sending RFC 2822 raw messages via:
-
-- `messages.send`
-- `drafts.send`
-
-This enables:
-
-- multipart messages
-- text and HTML alternatives
-- attachments
-- inline images using CID
-
-### Reply detection
-
-The app stores `threadId` and checks replies by fetching the thread and finding a newer message sent by someone else after `sent_at`.
-
-### Inline images
-
-Clipboard pasted images are stored locally and sent as MIME inline parts with a `Content-ID`, referenced in HTML using:
-
-- `cid:some-id`
-
----
-
-## Local-first and security
-
-- The database is stored locally in `backend/data/mail_orchestrator.db`
-- Attachments are stored locally in `backend/storage/`
-- OAuth credentials and tokens are stored in `backend/secrets/`
-- Database files, uploaded files, credentials, and tokens are excluded from Git
-- Docker bind mounts keep runtime data outside the container images
-
-Never commit or share `credentials.json` or `token.json`.
-
----
-
-## Docker deployment
-
-Docker Compose runs the application as two services:
-
-- `backend`: FastAPI and Uvicorn on port `8000`
-- `frontend`: the production Vite build served by Nginx on port `5173`
-
-### Persistent data
-
-The Compose configuration bind-mounts all runtime state from the host:
+## Docker and persistent data
 
 | Data | Host path | Container path |
 | --- | --- | --- |
-| SQLite database | `backend/data/` | `/data` |
-| Gmail OAuth credentials and token | `backend/secrets/` | `/app/secrets` |
-| Uploaded attachments | `backend/storage/` | `/app/storage` |
+| SQLite data, encrypted tokens and sessions | `backend/data/` | `/data` |
+| OAuth client JSON, encryption key and legacy token | `backend/secrets/` | `/app/secrets` |
+| Uploaded files | `backend/storage/` | `/app/storage` |
 
-Rebuilding images, recreating containers, running `docker compose down`, or
-restarting the computer does not delete these files.
+New uploads go into `storage/uploads/<account_id>/` with unique filenames.
+Legacy uploads stay at their original paths. Container rebuilds, restarts and
+`docker compose down` preserve these bind-mounted directories.
 
-If upgrading an older checkout that still uses `backend/mail_orchestrator.db`,
-stop the non-Docker backend before migrating it:
-
-```bash
-mkdir -p backend/data
-cp backend/mail_orchestrator.db backend/data/mail_orchestrator.db
-```
-
-Keep the original database as a backup until the history has been verified in
-the containerized application.
-
-### Start
-
-```bash
-docker compose up -d --build
-```
-
-Open http://localhost:5173. Database migrations run automatically when the
-backend container starts.
-
-Both services use `restart: unless-stopped`. If the Docker service starts at
-boot, the application returns automatically after a computer restart.
-
-On Linux systems using systemd:
-
-```bash
-sudo systemctl enable --now docker.service
-sudo systemctl enable --now containerd.service
-```
-
-### Operations
-
-```bash
-# Status and health
+```sh
 docker compose ps
-
-# Follow logs
 docker compose logs -f
-
-# Restart both services
 docker compose restart
-
-# Stop and start without removing containers
 docker compose stop
 docker compose start
-
-# Rebuild after changing code
-docker compose up -d --build
-
-# Remove containers and network; persistent host data remains
-docker compose down
+# Back up before activating schema changes:
+docker compose up -d --build --wait
 ```
 
----
+Migrations run automatically before the backend starts. Both services use
+`restart: unless-stopped`; automatic return after reboot also requires the
+Docker daemon to start.
 
-## Development
+See [ACCOUNTS.md](backend/ACCOUNTS.md) for routine backup, the one-time legacy
+migration rehearsal and rollback precautions. Never delete persistent folders
+to troubleshoot a login problem.
 
-### Prerequisites
+## Security and limitations
 
-* Node 18+
-* Python 3.12+
-* A Google Cloud project with Gmail API enabled and OAuth credentials
+- Google credentials are encrypted in SQLite; the key is stored separately with
+  mode 0600. Email bodies, attachments, settings and backup archives are not
+  encrypted by this application.
+- Keep the database, encryption key and attachments together in a protected backup.
+  Do not commit/share runtime credentials, keys, sessions or backups.
+- Browser sessions last 30 days; OAuth attempts expire after 10 minutes. A listed
+  account can still need reauthorization if Google access expires or is revoked.
+- This is a local-first application, not a hardened public multi-tenant service.
+  The default Compose port mappings bind to host interfaces, not only loopback;
+  review network access before using it on an untrusted network.
+- See [TECHNICAL_DEBT.md](TECHNICAL_DEBT.md) for resend tracking, file cleanup,
+  unsaved drafts and deployment limitations.
 
-### Run
+## Tests
 
-Activate the backend virtual environment, then start the combined development
-runner at the repository root:
+From `backend/`, with its virtual environment active:
 
-```bash
-source backend/.venv/bin/activate
-npm run dev
+```sh
+python -m pip install -e '.[test]'
+python -m unittest discover -s tests -v
 ```
 
-### Expected behavior
+From the repository root:
 
-* Starts backend with hot reload
-* Starts frontend with hot reload
-* Opens the browser automatically
-
-For first-time installation and manual backend/frontend commands, see
-[SETUP.md](./SETUP.md).
-
-### Roadmap
-
-Planned milestones, aligned with commit-driven development:
-
-* Vite frontend scaffold with editorial UI
-* FastAPI scaffold with Swagger
-* One-command dev workflow
-* SQLite + SQLAlchemy + Alembic
-* Compose UI and editor tabs
-* Clipboard image paste support
-* Template CRUD and placeholder parsing
-* OAuth login and token storage
-* Gmail send with MIME builder
-* History list with emoji-based relative time
-* Reply detection via thread fetch
-* Settings page for emoji thresholds
-
-### Future work
-
-* Follow-up chains per email
-* Scheduled follow-ups
-* Optional online deployment path
-* Multi-account support
-* Import existing sent mail into local database
-
-### Project structure
+```sh
+npm --prefix frontend run build
 ```
-mail-orchestrator/
-  backend/
-    app/
-      api/
-      core/
-      db/
-      gmail/
-      models/
-      schemas/
-      services/
-    data/             # persistent SQLite database (ignored by Git)
-    secrets/          # OAuth credentials and token (ignored by Git)
-    storage/          # uploaded attachments (ignored by Git)
-    Dockerfile
-    tests/
-    pyproject.toml
-    alembic.ini
-  frontend/
-    src/
-      assets/
-      styles/
-      pages/
-      components/
-    index.html
-    vite.config.js
-    package.json
-    Dockerfile
-    nginx.conf
-  scripts/
-    dev.mjs
-  compose.yml
-  README.md
-  package.json
-```
+
+The backend suite covers migration preservation, account isolation and mocked
+OAuth/Gmail operations. No real email is sent. The separate
+[browser fixture](frontend/README.md#isolated-browser-testing) uses disposable data.
+
+## Documentation
+
+- [Setup](SETUP.md): first installation and troubleshooting.
+- [Product and architecture](ABOUT.md).
+- [Backend quick start](backend/README.md) and [developer guide](backend/GUIDE.md).
+- [Accounts, backups and migration](backend/ACCOUNTS.md).
+- [Frontend guide](frontend/README.md).
+- [Development journey](JOURNEY.md).
+- [Known limitations](TECHNICAL_DEBT.md).
+
+## Roadmap
+
+Implemented: composer, inline images, template CRUD, Gmail send, reply checks,
+history sorting, per-account settings, multiple accounts, persistent Docker
+deployment and migration/isolation tests.
+
+Future work: follow-up chains, scheduled sending, importing sent mail, richer
+resend history and a hardened online deployment path.
 
 ## Contributing
 
-This project is being built as a learning-focused portfolio repository.
-
-Pull requests are welcome, but the primary workflow is commit-by-commit evolution with strong documentation and architectural intent.
+This is a learning-focused portfolio project. Preserve existing data, maintain
+account isolation in every new route/service and add regression tests for changes.
 
 ## License
 
-MIT. See [LICENSE](./LICENSE).
-# Multiple Gmail accounts
-
-Accounts now have separate histories, attachments, templates and settings.
-After upgrading, reconnect `srcaetite@gmail.com` to access the existing data.
-See [account isolation, backup and migration instructions](backend/ACCOUNTS.md).
+MIT. See [LICENSE](LICENSE).
