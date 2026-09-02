@@ -62,6 +62,38 @@ npm run dev
 
 Visit http://localhost:5173
 
+## Docker (persistent local data)
+
+The Compose setup runs the backend and frontend in separate containers and
+keeps local state on the host:
+
+- SQLite database: `backend/data/mail_orchestrator.db`
+- Gmail OAuth credentials and token: `backend/secrets/`
+- Uploaded attachments: `backend/storage/`
+
+Start in the background:
+
+```bash
+docker compose up -d --build
+```
+
+Open http://localhost:5173. Both services use `restart: unless-stopped`, so
+they restart with the Docker daemon unless they were stopped manually.
+
+Useful commands:
+
+```bash
+docker compose ps
+docker compose logs -f
+docker compose restart
+docker compose stop
+docker compose start
+docker compose down
+```
+
+`docker compose down` does not delete the persisted database, secrets, or
+attachments because they are bind-mounted from the paths above.
+
 ---
 
 ## Troubleshooting

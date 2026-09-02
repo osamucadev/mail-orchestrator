@@ -19,7 +19,7 @@ class Settings:
 
 
 def get_settings() -> Settings:
-    database_url = os.getenv("DATABASE_URL", "sqlite:///./mail_orchestrator.db")
+    database_url = os.getenv("DATABASE_URL", "sqlite:///./data/mail_orchestrator.db")
 
     client_secrets_file = os.getenv("GOOGLE_OAUTH_CLIENT_SECRETS_FILE", "./secrets/credentials.json")
     token_file = os.getenv("GOOGLE_OAUTH_TOKEN_FILE", "./secrets/token.json")

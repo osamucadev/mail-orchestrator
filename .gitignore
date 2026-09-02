@@ -23,6 +23,8 @@ ruff_cache/
 
 # Local DB
 backend/*.db
+backend/data/*.db
+!backend/data/.gitkeep
 
 # OAuth secrets
 backend/secrets/credentials.json
