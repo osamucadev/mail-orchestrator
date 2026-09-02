@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.template import Template
+from app.services.account_service import account_id
 from app.models.template_placeholder import TemplatePlaceholder
 
 PLACEHOLDER_RE = re.compile(r"\{\{\s*([a-zA-Z0-9_]+)\s*\}\}")
@@ -71,16 +72,16 @@ def _sync_placeholders(db: Session, template: Template) -> None:
 
 
 def list_templates(db: Session) -> list[Template]:
-    stmt = select(Template).order_by(Template.id.desc())
+    stmt = select(Template).where(Template.account_id == account_id(db)).order_by(Template.id.desc())
     return list(db.scalars(stmt).all())
 
 
 def get_template(db: Session, template_id: int) -> Template | None:
-    return db.get(Template, template_id)
+    return db.scalar(select(Template).where(Template.id == template_id, Template.account_id == account_id(db)))
 
 
 def create_template(db: Session, data: dict) -> Template:
-    template = Template(**data)
+    template = Template(account_id=account_id(db), **data)
     db.add(template)
     db.commit()
     db.refresh(template)

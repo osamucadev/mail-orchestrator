@@ -1,4 +1,4 @@
-import { getAuthUrl, openAuthPopup, checkAuthStatus } from "../lib/oauth";
+import { connectAccount } from "../lib/oauth";
 import { toast } from "./toast";
 
 export function renderLoginModal(root) {
@@ -18,6 +18,7 @@ export function renderLoginModal(root) {
           
           <div class="modal-footer">
             <button class="btn btn--primary" data-action="login">Open Gmail Login</button>
+            <a data-role="login-fallback" hidden>Continue login in this tab</a>
           </div>
           
           <div class="modal-status" data-role="status"></div>
@@ -39,10 +40,12 @@ export function renderLoginModal(root) {
     setStatus("Opening Gmail login...", "muted");
 
     try {
-      const authUrl = await getAuthUrl();
-      setStatus("Authorize in the popup window...", "muted");
-
-      await openAuthPopup(authUrl);
+      await connectAccount((url) => {
+        const fallback = root.querySelector('[data-role="login-fallback"]');
+        fallback.href = url;
+        fallback.hidden = false;
+        setStatus("Authorize in the popup, or use the link to continue in this tab.", "muted");
+      });
 
       setStatus("Successfully logged in!", "ok");
       toast("Logged in successfully", "ok");

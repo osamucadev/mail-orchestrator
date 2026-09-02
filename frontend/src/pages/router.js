@@ -6,7 +6,7 @@ import { renderAuthCallback } from "./authCallback";
 
 function normalizeHash(hash) {
   const h = (hash || "").replace("#", "").trim();
-  return h || "compose";
+  return ["compose", "history", "templates", "settings", "auth-callback"].includes(h) ? h : "compose";
 }
 
 export function getRoute() {

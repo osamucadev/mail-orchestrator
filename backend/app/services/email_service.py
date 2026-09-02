@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.time_utils import format_relative_time, pick_status_emoji
 from app.models.email import Email
+from app.services.account_service import account_id
 from app.models.email_attachment import EmailAttachment
 from app.services.settings_service import get_or_create_settings
 from app.models.email_attachment import EmailAttachment
@@ -28,6 +29,7 @@ def create_email(
     attachments = data.pop("attachments", [])
 
     email = Email(
+        account_id=account_id(db),
         to=data["to"],
         subject=data["subject"],
         body_text=data.get("body_text"),
@@ -64,10 +66,10 @@ def create_email(
 
 
 def list_history(db: Session, limit: int, offset: int, sort: str = "recent") -> dict:
-    total = db.scalar(select(func.count()).select_from(Email)) or 0
+    total = db.scalar(select(func.count()).select_from(Email).where(Email.account_id == account_id(db))) or 0
 
     order_column = Email.sent_at.asc() if sort == "oldest" else Email.sent_at.desc()
-    stmt = select(Email).order_by(order_column).limit(limit).offset(offset)
+    stmt = select(Email).where(Email.account_id == account_id(db)).order_by(order_column).limit(limit).offset(offset)
     emails = list(db.scalars(stmt).all())
 
     settings = get_or_create_settings(db)
@@ -118,7 +120,7 @@ def list_history(db: Session, limit: int, offset: int, sort: str = "recent") -> 
     }
 
 def mark_responded(db: Session, email_id: int, responded: bool = True) -> Email | None:
-    email = db.get(Email, email_id)
+    email = db.scalar(select(Email).where(Email.id == email_id, Email.account_id == account_id(db)))
     if email is None:
         return None
 
@@ -142,11 +144,11 @@ def resend_email(db: Session, email_id: int) -> Email | None:
     Sends a copy via Gmail and updates the original row.
     """
     # Get the original email
-    email = db.get(Email, email_id)
+    email = db.scalar(select(Email).where(Email.id == email_id, Email.account_id == account_id(db)))
     if email is None:
         return None
     
-    service = get_gmail_service()
+    service = get_gmail_service(db)
     if not service:
         raise HTTPException(status_code=401, detail="Not authenticated. Complete OAuth login first.")
     
@@ -185,7 +187,7 @@ def resend_email(db: Session, email_id: int) -> Email | None:
     return email
 
 def check_reply(db: Session, email_id: int) -> dict:
-    email = db.get(Email, email_id)
+    email = db.scalar(select(Email).where(Email.id == email_id, Email.account_id == account_id(db)))
     if email is None:
         return {"ok": False, "status": "not_found"}
 
@@ -199,7 +201,7 @@ def check_reply(db: Session, email_id: int) -> dict:
         db.commit()
         return {"ok": False, "status": "missing_thread_id"}
 
-    service = get_gmail_service()
+    service = get_gmail_service(db)
     if not service:
         db.commit()
         return {"ok": False, "status": "not_authenticated"}
@@ -232,7 +234,7 @@ def delete_email(db: Session, email_id: int) -> bool:
     """
     Delete an email and its attachments from the database.
     """
-    email = db.get(Email, email_id)
+    email = db.scalar(select(Email).where(Email.id == email_id, Email.account_id == account_id(db)))
     if email is None:
         return False
     

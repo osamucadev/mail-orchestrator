@@ -48,6 +48,8 @@ tokens/
 credentials/
 *.token.json
 oauth_token.json
+backend/secrets/account-token.key
+backend/data/backups/
 
 # Logs
 *.log

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -12,6 +12,7 @@ class Email(Base):
     __tablename__ = "emails"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[int] = mapped_column(ForeignKey("accounts.id"), nullable=False, index=True)
 
     gmail_message_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     gmail_thread_id: Mapped[str | None] = mapped_column(String(128), nullable=True)

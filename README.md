@@ -545,3 +545,8 @@ Pull requests are welcome, but the primary workflow is commit-by-commit evolutio
 ## License
 
 MIT. See [LICENSE](./LICENSE).
+# Multiple Gmail accounts
+
+Accounts now have separate histories, attachments, templates and settings.
+After upgrading, reconnect `srcaetite@gmail.com` to access the existing data.
+See [account isolation, backup and migration instructions](backend/ACCOUNTS.md).

@@ -5,6 +5,7 @@ from app.api.templates import router as templates_router
 from app.api.emails import router as emails_router
 from app.api.auth import router as auth_router
 from app.api.gmail import router as gmail_router
+from app.services.account_service import frontend_origin
 
 app = FastAPI(
     title="Mail Orchestrator API",
@@ -20,11 +21,19 @@ app.include_router(gmail_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[frontend_origin()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def prevent_private_data_caching(request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.get("/api/health")

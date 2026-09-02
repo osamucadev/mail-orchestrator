@@ -1,19 +1,20 @@
 from __future__ import annotations
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
+from app.services.account_service import account_id
 
 from app.models.settings import Settings
 
 
-DEFAULT_SETTINGS_ID = 1
 
 
 def get_or_create_settings(db: Session) -> Settings:
-    settings = db.get(Settings, DEFAULT_SETTINGS_ID)
+    settings = db.scalar(select(Settings).where(Settings.account_id == account_id(db)))
 
     if settings is None:
         settings = Settings(
-            id=DEFAULT_SETTINGS_ID,
+            account_id=account_id(db),
             t_white_minutes=1140,
             t_blue_minutes=4320,
             t_yellow_minutes=7200,

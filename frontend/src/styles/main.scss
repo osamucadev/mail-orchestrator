@@ -1053,3 +1053,38 @@ body {
     color: #991b1b;
   }
 }
+// The selected account is always visible, including while composing a message.
+.account-confirmation {
+  max-width: min(32rem, 90vw);
+  padding: 1.5rem;
+  border: 1px solid #b9b6bf;
+  border-radius: 8px;
+  color: #29272f;
+  background: #f7f7f5;
+
+  &::backdrop { background: rgba(0, 0, 0, 0.35); }
+}
+
+.account-toolbar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
+
+  select {
+    max-width: 100%;
+    padding: 0.5rem;
+    border: 1px solid #b9b6bf;
+    border-radius: 5px;
+    background: #fff;
+    color: #29272f;
+    font: inherit;
+  }
+
+  .account-status {
+    flex-basis: 100%;
+    color: #a13232;
+  }
+}

@@ -1,11 +1,17 @@
-const API_BASE = "http://localhost:8000";
+import { getActiveAccountId } from "./oauth";
+const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 async function request(path, options = {}) {
   const url = `${API_BASE}${path}`;
 
   const res = await fetch(url, {
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
     ...options,
+    credentials: "include",
+    headers: {
+      "Content-Type": "application/json",
+      ...(options.headers || {}),
+      "X-Account-ID": getActiveAccountId() || "",
+    },
   });
 
   if (!res.ok) {
@@ -67,6 +73,8 @@ export const api = {
       const res = await fetch(`${API_BASE}/api/emails/send-multipart`, {
         method: "POST",
         body: formData,
+        credentials: "include",
+        headers: { "X-Account-ID": getActiveAccountId() || "" },
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
