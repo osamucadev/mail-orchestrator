@@ -33,6 +33,7 @@ Project: **Mail Orchestrator**
 - [OAuth credentials](#oauth-credentials)
 - [Gmail integration](#gmail-integration)
 - [Local-first and security](#local-first-and-security)
+- [Docker deployment](#docker-deployment)
 - [Development](#development)
 - [Roadmap](#roadmap)
 - [Project structure](#project-structure)
@@ -361,16 +362,88 @@ Clipboard pasted images are stored locally and sent as MIME inline parts with a 
 
 ## Local-first and security
 
-- Database is local SQLite
-- Attachments are stored locally
-- OAuth tokens are stored locally
+- The database is stored locally in `backend/data/mail_orchestrator.db`
+- Attachments are stored locally in `backend/storage/`
+- OAuth credentials and tokens are stored in `backend/secrets/`
+- Database files, uploaded files, credentials, and tokens are excluded from Git
+- Docker bind mounts keep runtime data outside the container images
 
-Planned security approach:
+Never commit or share `credentials.json` or `token.json`.
 
-- store tokens in a local file outside version control
-- never commit secrets
-- `.env` for local configuration
-- `.gitignore` for token and DB files
+---
+
+## Docker deployment
+
+Docker Compose runs the application as two services:
+
+- `backend`: FastAPI and Uvicorn on port `8000`
+- `frontend`: the production Vite build served by Nginx on port `5173`
+
+### Persistent data
+
+The Compose configuration bind-mounts all runtime state from the host:
+
+| Data | Host path | Container path |
+| --- | --- | --- |
+| SQLite database | `backend/data/` | `/data` |
+| Gmail OAuth credentials and token | `backend/secrets/` | `/app/secrets` |
+| Uploaded attachments | `backend/storage/` | `/app/storage` |
+
+Rebuilding images, recreating containers, running `docker compose down`, or
+restarting the computer does not delete these files.
+
+If upgrading an older checkout that still uses `backend/mail_orchestrator.db`,
+stop the non-Docker backend before migrating it:
+
+```bash
+mkdir -p backend/data
+cp backend/mail_orchestrator.db backend/data/mail_orchestrator.db
+```
+
+Keep the original database as a backup until the history has been verified in
+the containerized application.
+
+### Start
+
+```bash
+docker compose up -d --build
+```
+
+Open http://localhost:5173. Database migrations run automatically when the
+backend container starts.
+
+Both services use `restart: unless-stopped`. If the Docker service starts at
+boot, the application returns automatically after a computer restart.
+
+On Linux systems using systemd:
+
+```bash
+sudo systemctl enable --now docker.service
+sudo systemctl enable --now containerd.service
+```
+
+### Operations
+
+```bash
+# Status and health
+docker compose ps
+
+# Follow logs
+docker compose logs -f
+
+# Restart both services
+docker compose restart
+
+# Stop and start without removing containers
+docker compose stop
+docker compose start
+
+# Rebuild after changing code
+docker compose up -d --build
+
+# Remove containers and network; persistent host data remains
+docker compose down
+```
 
 ---
 
@@ -384,8 +457,11 @@ Planned security approach:
 
 ### Run
 
-At repository root:
+Activate the backend virtual environment, then start the combined development
+runner at the repository root:
+
 ```bash
+source backend/.venv/bin/activate
 npm run dev
 ```
 
@@ -395,16 +471,8 @@ npm run dev
 * Starts frontend with hot reload
 * Opens the browser automatically
 
-### Environment variables
-
-The backend will require configuration values such as:
-
-* Google OAuth client ID
-* Google OAuth client secret
-* Redirect URL (localhost)
-* Token storage path
-
-These will be fully documented once the OAuth authentication commit is implemented.
+For first-time installation and manual backend/frontend commands, see
+[SETUP.md](./SETUP.md).
 
 ### Roadmap
 
@@ -443,6 +511,10 @@ mail-orchestrator/
       models/
       schemas/
       services/
+    data/             # persistent SQLite database (ignored by Git)
+    secrets/          # OAuth credentials and token (ignored by Git)
+    storage/          # uploaded attachments (ignored by Git)
+    Dockerfile
     tests/
     pyproject.toml
     alembic.ini
@@ -455,8 +527,11 @@ mail-orchestrator/
     index.html
     vite.config.js
     package.json
+    Dockerfile
+    nginx.conf
   scripts/
     dev.mjs
+  compose.yml
   README.md
   package.json
 ```
