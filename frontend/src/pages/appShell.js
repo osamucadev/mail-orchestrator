@@ -143,9 +143,16 @@ export async function renderAppShell(root) {
       add.disabled = disconnect.disabled = selector.disabled = false;
     }
   });
-  const page = root.querySelector('[data-role="page"]');
+  let page = root.querySelector('[data-role="page"]');
   function run() {
     setActiveNav(root);
+
+    // Each page registers event handlers on its root. Replace that root during
+    // navigation so handlers from earlier visits cannot fire a second send or
+    // resend with stale form/history state.
+    const freshPage = page.cloneNode(false);
+    page.replaceWith(freshPage);
+    page = freshPage;
     renderRoute(page);
   }
   window.addEventListener("hashchange", run);
