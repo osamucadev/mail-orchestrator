@@ -31,8 +31,10 @@ variable and the Dockerfile does not currently accept a corresponding build arg.
   never go into frontend storage.
 - `src/pages/appShell.js` lists connected accounts, shows the sender and provides
   add/reconnect/disconnect controls.
-- Switching accounts requires confirmation and reloads the page. Unsaved drafts
-  and form edits are discarded instead of carried into the other account.
+- Reconnecting the selected account keeps the current page alive so unsaved
+  Compose fields and attachments survive credential renewal. Switching to a
+  different account still requires confirmation and reloads the page; unsaved
+  edits are not carried into the other account.
 - The callback is handled before rendering the normal application. Popup results
   are checked against the expected source/origin and server account status.
 - The same-tab login link supports browsers where popups are blocked or awkward.

@@ -81,15 +81,27 @@ export async function renderAppShell(root) {
   const add = root.querySelector('[data-action="add-account"]');
   const disconnect = root.querySelector('[data-action="disconnect-account"]');
   add.addEventListener("click", async () => {
-    if (!await confirmAccountAction("Connect a Gmail account? After login the page will reload; unsaved changes will be discarded.")) return;
+    if (!await confirmAccountAction("Connect a Gmail account? Reconnecting the current account will keep this draft. Choosing a different account will reload the page and discard unsaved changes.")) return;
     add.disabled = disconnect.disabled = selector.disabled = true;
     feedback.textContent = "Complete authorization in the Gmail window...";
     try {
-      await connectAccount((url) => {
+      const connectedAccount = await connectAccount((url) => {
         const fallback = root.querySelector('[data-role="login-fallback"]');
         fallback.href = url;
         fallback.hidden = false;
       });
+
+      // A token refresh failure only requires replacing this account's Google
+      // credentials. Keep the current DOM alive so an in-progress message,
+      // including File objects selected as attachments, is not discarded.
+      if (String(connectedAccount.id) === String(active.id)) {
+        selector.value = String(connectedAccount.id);
+        feedback.textContent = `${connectedAccount.email} reconnected. Your draft was kept.`;
+        root.querySelector('[data-role="login-fallback"]').hidden = true;
+        add.disabled = disconnect.disabled = selector.disabled = false;
+        return;
+      }
+
       window.location.reload();
     } catch (error) {
       feedback.textContent = error.message;
