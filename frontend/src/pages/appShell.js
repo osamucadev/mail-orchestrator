@@ -46,21 +46,44 @@ export async function renderAppShell(root) {
           <span class="brand-mark">MO</span>
           <span class="brand-name">Mail Orchestrator</span>
         </div>
-        <nav class="nav">
-          <a class="nav-link" href="#compose">Compose</a>
-          <a class="nav-link" href="#history">History</a>
-          <a class="nav-link" href="#templates">Templates</a>
-          <a class="nav-link" href="#settings">Settings</a>
-        </nav>
-      </div>
-      <div class="container account-toolbar">
-        <label for="active-account">Gmail / sender</label>
-        <select id="active-account" aria-label="Active Gmail account"></select>
-        <button class="btn" data-action="add-account">Add / reconnect account</button>
-        <button class="btn" data-action="disconnect-account">Disconnect account</button>
-        <span class="hint">History, templates and settings are private to this account.</span>
-        <span class="account-status" role="status" aria-live="polite"></span>
-        <a data-role="login-fallback" hidden>Continue login in this tab</a>
+        <div class="topbar-actions">
+          <nav class="nav" aria-label="Main navigation">
+            <a class="nav-link" href="#compose">Compose</a>
+            <a class="nav-link" href="#history">History</a>
+            <a class="nav-link" href="#templates">Templates</a>
+            <a class="nav-link" href="#settings">Settings</a>
+          </nav>
+
+          <details class="account-menu" data-role="account-menu">
+            <summary aria-label="Open sender account menu">
+              <span class="account-avatar" aria-hidden="true">@</span>
+              <span class="account-summary">
+                <span class="account-summary-label">From</span>
+                <span class="account-summary-email" data-role="active-account-email"></span>
+              </span>
+              <span class="account-chevron" aria-hidden="true"></span>
+            </summary>
+
+            <div class="account-popover">
+              <div class="account-popover-head">
+                <span class="account-popover-eyebrow">Sender account</span>
+                <strong>Choose who sends this email</strong>
+              </div>
+
+              <label class="account-select-label" for="active-account">Gmail account</label>
+              <select id="active-account" aria-label="Active Gmail account"></select>
+
+              <div class="account-menu-actions">
+                <button class="btn" data-action="add-account">Reconnect or add</button>
+                <button class="btn btn--ghost account-disconnect" data-action="disconnect-account">Disconnect</button>
+              </div>
+
+              <span class="account-status" role="status" aria-live="polite"></span>
+              <a class="account-login-fallback" data-role="login-fallback" hidden>Continue login in this tab</a>
+              <p class="account-privacy">History, templates and settings stay separate for each account.</p>
+            </div>
+          </details>
+        </div>
       </div>
     </header>
     <main class="page" data-role="page"></main>
@@ -69,6 +92,7 @@ export async function renderAppShell(root) {
   for (const account of status.accounts) {
     selector.add(new Option(account.email, String(account.id), false, account.id === active.id));
   }
+  root.querySelector('[data-role="active-account-email"]').textContent = active.email;
   const feedback = root.querySelector(".account-status");
   selector.addEventListener("change", async () => {
     if (!await confirmAccountAction("Switch Gmail account? Unsaved changes on this page will be discarded.")) {
