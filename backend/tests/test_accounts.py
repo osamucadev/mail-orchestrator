@@ -112,6 +112,10 @@ class AccountTests(unittest.TestCase):
                 ("DELETE", "/api/templates/2", None),
                 ("POST", "/api/emails/2/mark-responded", {"responded": True}),
                 ("POST", "/api/emails/2/resend", None),
+                ("GET", "/api/emails/2", None),
+                ("POST", "/api/emails/2/resend-copy", {
+                    "to": "recipient@example.com", "subject": "Copy"
+                }),
                 ("POST", "/api/emails/2/check-reply", None),
                 ("DELETE", "/api/emails/2", None),
             ]
@@ -174,6 +178,49 @@ class AccountTests(unittest.TestCase):
                 "app.services.email_service.send_email_via_gmail", return_value={}) as send:
                 self.assertEqual(self.client.post(f"/api/emails/{selected}/resend").status_code, 201)
                 self.assertEqual(send.call_args.kwargs["service"], f"gmail-account-{selected}")
+
+    def test_editable_resend_creates_copy_and_preserves_original(self):
+        with self.sessions() as db:
+            original = db.get(Email, 1)
+            original.body_html = "<p>Original body</p>"
+            db.add(EmailAttachment(
+                email_id=1,
+                filename="resume.pdf",
+                mime_type="application/pdf",
+                size_bytes=42,
+                storage_path="storage/uploads/1/resume.pdf",
+                disposition="attachment",
+            ))
+            db.commit()
+
+        detail = self.client.get("/api/emails/1")
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.json()["attachments"][0]["filename"], "resume.pdf")
+
+        payload = {
+            "to": "corrected@example.com",
+            "subject": "Corrected subject",
+            "body_html": "<p>Edited body</p>",
+        }
+        with patch("app.services.email_service.get_gmail_service", return_value=MagicMock()), patch(
+            "app.services.email_service.send_email_via_gmail",
+            return_value={"gmail_message_id": "copy", "gmail_thread_id": "copy-thread"},
+        ) as send:
+            response = self.client.post("/api/emails/1/resend-copy", json=payload)
+
+        self.assertEqual(response.status_code, 201, response.text)
+        self.assertNotEqual(response.json()["id"], 1)
+        self.assertEqual(send.call_args.kwargs["subject"], "Corrected subject")
+        self.assertEqual(send.call_args.kwargs["attachments"][0]["filename"], "resume.pdf")
+
+        with self.sessions() as db:
+            original = db.get(Email, 1)
+            copy = db.get(Email, response.json()["id"])
+            self.assertEqual(original.subject, "Account 1")
+            self.assertEqual(original.send_count, 1)
+            self.assertEqual(copy.subject, "Corrected subject")
+            self.assertEqual(copy.to, "corrected@example.com")
+            self.assertEqual(copy.attachments[0].filename, "resume.pdf")
 
     def test_multipart_uploads_are_namespaced_and_collision_safe(self):
         with patch("app.api.emails.STORAGE_DIR", Path(self.tmp.name) / "uploads"), patch(

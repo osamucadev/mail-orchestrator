@@ -14,8 +14,10 @@ from app.gmail.gmail_client import get_gmail_service
 from app.gmail.gmail_sender import send_email_via_gmail
 from app.schemas.email import (
     EmailActionResponse,
+    EmailDetailResponse,
     EmailHistoryResponse,
     EmailMarkRespondedRequest,
+    EmailResendCopyRequest,
     EmailSendRequest,
     EmailSendResponse,
 )
@@ -23,10 +25,12 @@ from app.schemas.email import (
 from app.services.email_service import (
     check_reply,
     create_email,
+    delete_email,
+    get_email,
     list_history,
     mark_responded,
     resend_email,
-    delete_email
+    resend_email_copy,
 )
 
 STORAGE_DIR = Path("./storage")
@@ -170,6 +174,14 @@ def read_history(
 ):
     return list_history(db, limit=limit, offset=offset, sort=sort)
 
+
+@router.get("/{email_id}", response_model=EmailDetailResponse)
+def read_email(email_id: int, db: Session = Depends(get_account_db)):
+    email = get_email(db, email_id=email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    return email
+
 @router.post("/{email_id}/mark-responded", response_model=EmailActionResponse)
 def manual_mark_responded(
     email_id: int,
@@ -188,6 +200,18 @@ def resend(
     db: Session = Depends(get_account_db),
 ):
     email = resend_email(db, email_id=email_id)
+    if email is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    return email
+
+
+@router.post("/{email_id}/resend-copy", response_model=EmailSendResponse, status_code=status.HTTP_201_CREATED)
+def resend_copy(
+    email_id: int,
+    payload: EmailResendCopyRequest,
+    db: Session = Depends(get_account_db),
+):
+    email = resend_email_copy(db, email_id=email_id, data=payload.model_dump())
     if email is None:
         raise HTTPException(status_code=404, detail="Email not found")
     return email

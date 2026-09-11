@@ -67,3 +67,33 @@ class EmailActionResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class EmailAttachmentSummary(BaseModel):
+    filename: str
+    mime_type: str
+    size_bytes: int
+    disposition: str
+    content_id: str | None = None
+
+    class Config:
+        from_attributes = True
+
+
+class EmailDetailResponse(BaseModel):
+    id: int
+    to: str
+    subject: str
+    body_text: str | None = None
+    body_html: str | None = None
+    attachments: list[EmailAttachmentSummary]
+
+    class Config:
+        from_attributes = True
+
+
+class EmailResendCopyRequest(BaseModel):
+    to: str = Field(..., min_length=3, max_length=320)
+    subject: str = Field(..., min_length=1, max_length=998)
+    body_text: str | None = None
+    body_html: str | None = None

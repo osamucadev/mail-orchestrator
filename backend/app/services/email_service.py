@@ -12,8 +12,6 @@ from app.models.email import Email
 from app.services.account_service import account_id
 from app.models.email_attachment import EmailAttachment
 from app.services.settings_service import get_or_create_settings
-from app.models.email_attachment import EmailAttachment
-
 from app.gmail.reply_detector import check_thread_for_reply
 from app.gmail.gmail_client import get_gmail_service
 from app.gmail.gmail_sender import send_email_via_gmail
@@ -119,6 +117,15 @@ def list_history(db: Session, limit: int, offset: int, sort: str = "recent") -> 
         "total": total,
     }
 
+
+def get_email(db: Session, email_id: int) -> Email | None:
+    return db.scalar(
+        select(Email).where(
+            Email.id == email_id,
+            Email.account_id == account_id(db),
+        )
+    )
+
 def mark_responded(db: Session, email_id: int, responded: bool = True) -> Email | None:
     email = db.scalar(select(Email).where(Email.id == email_id, Email.account_id == account_id(db)))
     if email is None:
@@ -185,6 +192,51 @@ def resend_email(db: Session, email_id: int) -> Email | None:
     db.refresh(email)
     
     return email
+
+
+def resend_email_copy(db: Session, email_id: int, data: dict) -> Email | None:
+    """Send edited content as a new history record, leaving the original intact."""
+    original = get_email(db, email_id)
+    if original is None:
+        return None
+
+    service = get_gmail_service(db)
+    if not service:
+        raise HTTPException(status_code=401, detail="Not authenticated. Complete OAuth login first.")
+
+    attachments = [
+        {
+            "filename": attachment.filename,
+            "mime_type": attachment.mime_type,
+            "size_bytes": attachment.size_bytes,
+            "storage_path": attachment.storage_path,
+            "disposition": attachment.disposition,
+            "content_id": attachment.content_id,
+        }
+        for attachment in original.attachments
+    ]
+
+    ids = send_email_via_gmail(
+        service=service,
+        to=data["to"],
+        subject=data["subject"],
+        body_text=data.get("body_text"),
+        body_html=data.get("body_html"),
+        attachments=attachments,
+    )
+
+    return create_email(
+        db,
+        {
+            "to": data["to"],
+            "subject": data["subject"],
+            "body_text": data.get("body_text"),
+            "body_html": data.get("body_html"),
+            "attachments": attachments,
+        },
+        gmail_message_id=ids.get("gmail_message_id") or None,
+        gmail_thread_id=ids.get("gmail_thread_id") or None,
+    )
 
 def check_reply(db: Session, email_id: int) -> dict:
     email = db.scalar(select(Email).where(Email.id == email_id, Email.account_id == account_id(db)))
