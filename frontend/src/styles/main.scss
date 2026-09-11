@@ -941,10 +941,18 @@ body {
 }
 
 .toast {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  min-width: min(320px, calc(100vw - 36px));
+  max-width: 380px;
+  overflow: hidden;
   border: 1px solid rgba(17, 24, 39, 0.16);
   background: #fff;
   box-shadow: 8px 8px 0 rgba(17, 24, 39, 0.06);
-  padding: 10px 12px;
+  padding: 12px 12px 14px 14px;
   font-weight: 850;
   letter-spacing: -0.01em;
   transform: translateY(6px);
@@ -952,7 +960,6 @@ body {
   transition:
     transform 160ms ease,
     opacity 160ms ease;
-  max-width: 320px;
 }
 
 .toast.is-in {
@@ -972,6 +979,49 @@ body {
 
 .toast--muted {
   background: rgba(17, 24, 39, 0.03);
+}
+
+.toast-message {
+  min-width: 0;
+  line-height: 1.4;
+}
+
+.toast-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(11, 11, 15, 0.6);
+  cursor: pointer;
+  font: 400 1.35rem/1 "IBM Plex Sans", system-ui, sans-serif;
+
+  &:hover,
+  &:focus-visible {
+    background: rgba(17, 24, 39, 0.08);
+    color: $ink;
+    outline: none;
+  }
+}
+
+.toast-progress {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: currentColor;
+  opacity: 0.38;
+  transform: scaleX(1);
+  transform-origin: left;
+  animation: toast-countdown var(--toast-duration, 5000ms) linear forwards;
+}
+
+@keyframes toast-countdown {
+  to { transform: scaleX(0); }
 }
 
 .modal {

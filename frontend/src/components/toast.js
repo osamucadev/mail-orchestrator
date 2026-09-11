@@ -1,5 +1,4 @@
 let container = null;
-let timer = null;
 
 function ensureContainer() {
   if (container) return container;
@@ -10,22 +9,47 @@ function ensureContainer() {
   return container;
 }
 
-export function toast(message, variant = "muted") {
+export function toast(message, variant = "muted", duration = 5000) {
   const root = ensureContainer();
 
   const el = document.createElement("div");
   el.className = `toast toast--${variant}`;
-  el.textContent = message;
+  el.setAttribute("role", variant === "error" ? "alert" : "status");
+  el.style.setProperty("--toast-duration", `${duration}ms`);
+
+  const text = document.createElement("span");
+  text.className = "toast-message";
+  text.textContent = message;
+
+  const closeButton = document.createElement("button");
+  closeButton.className = "toast-close";
+  closeButton.type = "button";
+  closeButton.setAttribute("aria-label", "Dismiss notification");
+  closeButton.textContent = "×";
+
+  const progress = document.createElement("span");
+  progress.className = "toast-progress";
+  progress.setAttribute("aria-hidden", "true");
+
+  el.append(text, closeButton, progress);
 
   root.appendChild(el);
+
+  let removed = false;
+  let removalTimer;
+  const dismiss = () => {
+    if (removed) return;
+    removed = true;
+    clearTimeout(removalTimer);
+    el.classList.remove("is-in");
+    setTimeout(() => el.remove(), 180);
+  };
+
+  closeButton.addEventListener("click", dismiss);
 
   requestAnimationFrame(() => {
     el.classList.add("is-in");
   });
 
-  clearTimeout(timer);
-  timer = setTimeout(() => {
-    el.classList.remove("is-in");
-    setTimeout(() => el.remove(), 180);
-  }, 2200);
+  removalTimer = setTimeout(dismiss, duration);
 }
