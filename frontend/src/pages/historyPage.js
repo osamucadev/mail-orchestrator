@@ -10,6 +10,90 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+function formatBytes(bytes) {
+  const value = Number(bytes || 0);
+  if (value < 1024) return `${value} B`;
+  const kilobytes = value / 1024;
+  if (kilobytes < 1024) return `${kilobytes.toFixed(1)} KB`;
+  return `${(kilobytes / 1024).toFixed(1)} MB`;
+}
+
+function openResendDialog(email) {
+  const dialog = document.createElement("dialog");
+  dialog.className = "resend-dialog";
+  const editsHtml = Boolean(email.body_html);
+  const message = editsHtml ? email.body_html : (email.body_text || "");
+  const attachments = email.attachments || [];
+
+  const attachmentContent = attachments.length
+    ? attachments.map((attachment) => `
+        <li>
+          <span>${escapeHtml(attachment.filename)}</span>
+          <small>${formatBytes(attachment.size_bytes)}</small>
+        </li>
+      `).join("")
+    : '<li class="resend-attachments-empty">No attachments</li>';
+
+  dialog.innerHTML = `
+    <form method="dialog" class="resend-form">
+      <div class="resend-dialog-head">
+        <div>
+          <span class="resend-eyebrow">Send a new copy</span>
+          <h2>Edit before resending</h2>
+        </div>
+        <button class="resend-dialog-close" value="cancel" aria-label="Close">×</button>
+      </div>
+
+      <div class="cols cols--2">
+        <label class="field">
+          <span class="label">To</span>
+          <input class="input" name="to" type="email" value="${escapeHtml(email.to)}" required />
+        </label>
+        <label class="field">
+          <span class="label">Subject</span>
+          <input class="input" name="subject" value="${escapeHtml(email.subject)}" required />
+        </label>
+      </div>
+
+      <label class="field">
+        <span class="label">Message ${editsHtml ? "(HTML)" : ""}</span>
+        <textarea class="textarea ${editsHtml ? "textarea--mono" : ""}" name="message" rows="12">${escapeHtml(message)}</textarea>
+      </label>
+
+      <div class="resend-attachments">
+        <span class="label">Included attachments</span>
+        <ul>${attachmentContent}</ul>
+        <p>Attachments from the original email will be included automatically.</p>
+      </div>
+
+      <div class="resend-dialog-actions">
+        <button class="btn btn--ghost" value="cancel">Cancel</button>
+        <button class="btn btn--primary" value="send-copy">Send copy</button>
+      </div>
+    </form>
+  `;
+
+  document.body.append(dialog);
+  dialog.showModal();
+
+  return new Promise((resolve) => {
+    dialog.addEventListener("close", () => {
+      let payload = null;
+      if (dialog.returnValue === "send-copy") {
+        const form = new FormData(dialog.querySelector("form"));
+        payload = {
+          to: String(form.get("to") || "").trim(),
+          subject: String(form.get("subject") || "").trim(),
+          body_text: editsHtml ? email.body_text : String(form.get("message") || ""),
+          body_html: editsHtml ? String(form.get("message") || "") : email.body_html,
+        };
+      }
+      dialog.remove();
+      resolve(payload);
+    }, { once: true });
+  });
+}
+
 export async function renderHistoryPage(root) {
   root.innerHTML = `
     <section class="page-shell">
@@ -149,9 +233,8 @@ export async function renderHistoryPage(root) {
             </div>
 
             <div class="history-actions">
-              <div class="history-actions">
               <button class="btn btn--ghost" data-action="check-reply">Check reply</button>
-              <button class="btn btn--ghost" data-action="resend">Resend</button>
+              <button class="btn btn--ghost" data-action="resend">Edit &amp; resend</button>
               ${
                 e.responded
                   ? `<button class="btn btn--ghost" data-action="mark-unreplied">Mark not replied</button>`
@@ -244,13 +327,21 @@ export async function renderHistoryPage(root) {
 
     executingOperations.set(operationKey, true);
     disableItemButtons(id, true);
-    setStatus("Resending…", "muted");
+    setStatus("Loading email…", "muted");
 
     try {
-      await api.emails.resend(id);
+      const email = await api.emails.get(id);
+      const payload = await openResendDialog(email);
+      if (!payload) {
+        setStatus("Resend cancelled", "muted");
+        return;
+      }
+
+      setStatus("Sending copy…", "muted");
+      await api.emails.resendCopy(id, payload);
       await loadPage({ reset: true });
-      toast("Email resent", "ok");
-      setStatus("Resent", "ok");
+      toast("Edited copy sent", "ok");
+      setStatus("Copy sent", "ok");
     } catch (err) {
       toast("Failed to resend", "error");
       setStatus(err.message, "error");

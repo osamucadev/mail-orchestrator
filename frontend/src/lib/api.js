@@ -49,6 +49,7 @@ export const api = {
   emails: {
     history: (limit = 50, offset = 0, sort = "recent") =>
       request(`/api/emails/history?limit=${limit}&offset=${offset}&sort=${sort}`),
+    get: (id) => request(`/api/emails/${id}`),
     send: (payload) =>
       request("/api/emails/send", {
         method: "POST",
@@ -60,6 +61,11 @@ export const api = {
         body: JSON.stringify({ responded }),
       }),
     resend: (id) => request(`/api/emails/${id}/resend`, { method: "POST" }),
+    resendCopy: (id, payload) =>
+      request(`/api/emails/${id}/resend-copy`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
     checkReply: (id) =>
       request(`/api/emails/${id}/check-reply`, { method: "POST" }),
     sendMultipart: async (formData) => {

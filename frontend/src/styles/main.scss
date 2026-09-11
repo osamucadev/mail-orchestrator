@@ -1122,6 +1122,115 @@ body {
   &::backdrop { background: rgba(0, 0, 0, 0.35); }
 }
 
+.resend-dialog {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid $line-strong;
+  background: $paper;
+  color: $ink;
+  box-shadow: 12px 12px 0 rgba(43, 15, 74, 0.16);
+
+  &::backdrop { background: rgba(11, 11, 15, 0.48); }
+}
+
+.resend-form {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.resend-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid $line;
+
+  h2 {
+    margin: 4px 0 0;
+    font-family: "Space Grotesk", system-ui, sans-serif;
+    font-size: 1.45rem;
+    letter-spacing: -0.02em;
+  }
+}
+
+.resend-eyebrow {
+  color: $muted-2;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.resend-dialog-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid transparent;
+  background: transparent;
+  color: $muted-2;
+  cursor: pointer;
+  font: 400 1.5rem/1 "IBM Plex Sans", system-ui, sans-serif;
+
+  &:hover,
+  &:focus-visible {
+    border-color: $line-strong;
+    background: #fff;
+    color: $ink;
+    outline: none;
+  }
+}
+
+.resend-attachments {
+  padding: 14px;
+  border: 1px solid $line;
+  background: rgba(255, 255, 255, 0.6);
+
+  ul {
+    display: grid;
+    gap: 7px;
+    margin: 10px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px;
+    border: 1px solid $line;
+    background: #fff;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: 0.82rem;
+  }
+
+  small { color: $muted-2; }
+
+  p {
+    margin: 10px 0 0;
+    color: $muted-2;
+    font-size: 0.8rem;
+  }
+}
+
+.resend-attachments .resend-attachments-empty {
+  color: $muted-2;
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.resend-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
 .account-menu {
   position: relative;
   flex: 0 1 auto;
