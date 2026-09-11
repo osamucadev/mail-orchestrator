@@ -1,5 +1,6 @@
 import { renderLoginModal } from "../components/loginModal";
 import { connectAccount, getActiveAccountId, getAuthStatus, logout, selectAccount } from "../lib/oauth";
+import faviconUrl from "../assets/favicon.svg";
 import { getRoute, renderRoute } from "./router";
 
 function confirmAccountAction(message) {
@@ -42,10 +43,10 @@ export async function renderAppShell(root) {
   root.innerHTML = `
     <header class="topbar">
       <div class="container topbar-inner">
-        <div class="brand">
-          <span class="brand-mark">MO</span>
+        <a class="brand" href="#compose" aria-label="Mail Orchestrator — Compose">
+          <img class="brand-mark" src="${faviconUrl}" alt="" />
           <span class="brand-name">Mail Orchestrator</span>
-        </div>
+        </a>
         <div class="topbar-actions">
           <nav class="nav" aria-label="Main navigation">
             <a class="nav-link" href="#compose">Compose</a>
